@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/*
+ * Y2K 레트로 웹 디자인 토큰 (Tailwind v4: 이 @theme 블록이 곧 Tailwind config)
+ * - 기본 팔레트는 비워서 토큰에 정의된 색만 쓰도록 강제한다.
+ * - 선은 얇고 또렷하게: 항상 border-2 border-ink. 요소는 기울이지 않는다.
+ */
+@theme {
+  --color-*: initial;
+  --color-ink: #1c1a22;
+  --color-white: #ffffff;
+  --color-lavender: #f8f5ff; /* 창 본문 */
+  --color-peach: #ffdcc8; /* 배경 */
+  --color-apricot: #ffc09a;
+  --color-orange: #ff9d5c; /* 메인 CTA, 타이틀바 */
+  --color-butter: #fff3b0; /* 주소창, 채워진 하트 */
+  --color-periwinkle: #aabdff; /* 닫기 버튼, 빈 하트 */
+  --color-red: #e0352b; /* 에러 */
+
+  --radius-window: 16px;
+
+  --shadow-pop: 3px 3px 0 0 var(--color-ink);
+
+  --animate-twinkle: twinkle 1.8s ease-in-out infinite;
+  --animate-float: float 4s ease-in-out infinite;
+
+  @keyframes twinkle {
+    0%,
+    100% {
+      scale: 1;
+      opacity: 1;
+    }
+    50% {
+      scale: 0.7;
+      opacity: 0.6;
+    }
+  }
+  @keyframes float {
+    0%,
+    100% {
+      translate: 0 0;
+    }
+    50% {
+      translate: 0 -8px;
+    }
+  }
+}
+
+/* next/font가 주입하는 변수를 참조하므로 inline */
+@theme inline {
+  --font-pixel: var(--font-galmuri), "Apple SD Gothic Neo", monospace;
+  --font-sans: var(--font-nanum-coding), "Apple SD Gothic Neo", monospace;
+}
+
+/* 버튼: hover 시 살짝 떠오르며 그림자, active 시 제자리로 꾹 */
+@utility press {
+  transition:
+    translate 80ms ease-out,
+    box-shadow 80ms ease-out;
+  &:not(:disabled, [aria-disabled="true"]):hover {
+    translate: -2px -2px;
+    box-shadow: var(--shadow-pop);
+  }
+  &:not(:disabled, [aria-disabled="true"]):active {
+    translate: 0 0;
+    box-shadow: none;
+  }
+}
+
+/* 파스텔 홀로그램 그라데이션 */
+@utility bg-holo {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-periwinkle),
+    #ffb8e0 35%,
+    var(--color-butter) 65%,
+    #b8f5e0
+  );
+}
+
+/* 모눈종이 격자 */
+@utility bg-grid {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.85) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.85) 1.5px, transparent 1.5px);
+  background-size: 44px 44px;
+}
+
+/* 하트 모양으로 잘라내기 (하트 게이지, 광택 하트) */
+@utility mask-heart {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1 -1 26 26'%3E%3Cpath d='M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.9 4.5 6.6 4.5c2.2 0 3.6 1.2 5.4 3.1 1.8-1.9 3.2-3.1 5.4-3.1 3.7 0 5.7 3.9 4.2 7.3C19.5 16.4 12 21 12 21z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply font-sans text-ink antialiased;
+    /* 복숭아빛 흐린 그라데이션 */
+    background:
+      radial-gradient(55% 45% at 85% 5%, #fff3ea 0, transparent 70%),
+      radial-gradient(50% 40% at 5% 95%, #ffb48c 0, transparent 70%),
+      linear-gradient(165deg, #ffe7d9, var(--color-peach) 50%, #ffc9ab);
+    background-attachment: fixed;
+    font-synthesis: none;
+    /* 한글은 어절 단위로 줄바꿈 */
+    word-break: keep-all;
+  }
+  /* 화면 가장자리에만 보이는 흰 격자 */
+  body::before {
+    @apply bg-grid;
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    mask-image: radial-gradient(ellipse at center, transparent 30%, black 80%);
+  }
+  :focus-visible {
+    outline: 2px dashed var(--color-ink);
+    outline-offset: 3px;
+  }
+  ::selection {
+    background: var(--color-butter);
+    color: var(--color-ink);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

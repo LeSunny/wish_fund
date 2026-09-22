@@ -1,0 +1,88 @@
+// Prisma schema — wish_fund
+// 로컬: SQLite / 배포: Postgres (datasource.provider + src/lib/prisma.ts 어댑터 교체)
+// 자세한 규칙은 CLAUDE.md 참고
+
+// Prisma 7: 연결 URL은 prisma.config.ts, 런타임 연결은 드라이버 어댑터(src/lib/prisma.ts)
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum CampaignStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+enum PledgeStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Campaign {
+  id          String @id @default(cuid())
+  slug        String @unique
+
+  title       String
+  description String // 마크다운 허용 (렌더 시 raw HTML은 비허용)
+
+  productUrl   String?
+  thumbnailUrl String?
+
+  goalAmount Int // 원 단위
+  deadline   DateTime
+
+  // 수동 송금 정보 (결제 연동 없음)
+  accountInfo String? // 은행/계좌/예금주
+  kakaopayUrl String?
+  tossUrl     String?
+
+  status        CampaignStatus @default(DRAFT)
+  thanksMessage String? // 성공 페이지 문구
+
+  // 향후 회원 기능 확장용. MVP에서는 항상 null, 코드에서 사용하지 않음
+  ownerId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pledges Pledge[]
+
+  @@index([status])
+  @@map("campaigns")
+}
+
+model Pledge {
+  id String @id @default(cuid())
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  // 수정/취소용 코드. 서버 발급, 전역 unique. "귤-47-딸기" 형태 (lib/pledge-code.ts)
+  code String @unique
+
+  displayName String // 닉네임 가능
+  isAnonymous Boolean @default(false) // true면 공개 목록에 "익명"으로 표시
+
+  amount         Int // 원 단위
+  isAmountPublic Boolean @default(false) // false면 공개 목록에서 금액 숨김 (관리자 화면은 항상 노출)
+
+  message String? // 한 줄 축하 메시지
+
+  status PledgeStatus @default(PENDING)
+
+  // 향후 PG 결제 확장용. MVP에서는 항상 null, 코드에서 사용하지 않음
+  paymentMethod String?
+  paymentId     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId, status])
+  @@map("pledges")
+}
