@@ -35,4 +35,46 @@ export const slugSchema = z
   .string()
   .min(1)
   .max(64)
-  .regex(/^[a-z0-9-]+$/);
+  .regex(/^[a-z0-9-]+$/, "영문 소문자·숫자·하이픈만 쓸 수 있어요");
+
+// ---- 관리자 ----
+
+export const GOAL_AMOUNT_MAX = 50_000_000;
+
+/** 빈 문자열은 null로 (nullable 필드용 선택 입력) */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((v) => v || null);
+
+const optionalUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((v) => v === "" || z.url().safeParse(v).success, "올바른 URL 형식이 아니에요")
+  .transform((v) => v || null);
+
+export const campaignInputSchema = z.object({
+  slug: slugSchema,
+  title: z.string().trim().min(1, "제목을 입력해주세요").max(60, "제목은 60자까지예요"),
+  description: z.string().trim().min(1, "설명을 입력해주세요").max(4000, "설명은 4000자까지예요"),
+  productUrl: optionalUrl,
+  thumbnailUrl: optionalUrl,
+  goalAmount: z
+    .number({ error: "목표 금액을 입력해주세요" })
+    .int()
+    .min(1_000, "최소 1,000원 이상으로 설정해주세요")
+    .max(GOAL_AMOUNT_MAX, `최대 ${GOAL_AMOUNT_MAX.toLocaleString("ko-KR")}원까지예요`),
+  deadline: z.coerce.date({ error: "마감일을 입력해주세요" }),
+  accountInfo: optionalText(200),
+  kakaopayUrl: optionalUrl,
+  tossUrl: optionalUrl,
+  thanksMessage: optionalText(200),
+  status: z.enum(["DRAFT", "OPEN"]),
+});
+
+export type CampaignInput = z.infer<typeof campaignInputSchema>;
+
+export const adminPasswordSchema = z.string().min(1, "비밀번호를 입력해주세요").max(200);

@@ -7,6 +7,10 @@ export const inputStyles = cn(
   "aria-invalid:border-red aria-invalid:bg-red/5",
 );
 
+export const textareaStyles = cn(inputStyles, "h-auto min-h-28 resize-y py-2 leading-relaxed");
+
+export const selectStyles = cn(inputStyles, "select-chevron appearance-none pr-9");
+
 type FieldProps = {
   label: ReactNode;
   htmlFor: string;

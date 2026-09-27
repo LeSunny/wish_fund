@@ -63,11 +63,13 @@
 | 경로 | 설명 |
 |---|---|
 | `/` | 대표 캠페인으로 이동 (`DEFAULT_CAMPAIGN_SLUG` env, 없으면 가장 최근 OPEN 캠페인) |
-| `/c/[slug]` | 캠페인 메인: 진행률, 상품, 후원자 목록, 후원하기 CTA |
+| `/c/[slug]` | 캠페인 메인: 진행률, 상품, 후원자 목록, 후원하기 CTA. DRAFT는 404, **CLOSED는 `/success`로 redirect** |
 | `/c/[slug]/pledge` | 후원 플로우 (입력 → 송금 안내 → 코드 발급 완료 화면) |
-| `/c/[slug]/success` | 마감 후 성공 페이지 (CLOSED가 아니면 메인으로 redirect) |
+| `/c/[slug]/success` | 마감 후 성공 페이지. **CLOSED가 아니면 메인으로 redirect** (서로 반대 방향으로 맞물림) |
 | `/my/[code]` | 내 후원 조회/수정/취소 (코드만으로 접근) |
-| `/admin` | 관리자. 비밀번호 로그인 → httpOnly 쿠키 세션 |
+| `/admin` | 관리자 로그인 화면 (세션 있으면 캠페인 목록) |
+| `/admin/campaigns/new` | 캠페인 생성 |
+| `/admin/campaigns/[id]` | 캠페인 수정 + 후원 목록(입금 확인) + 수동 마감 |
 
 ## 핵심 규칙
 
@@ -89,13 +91,16 @@
 
 ## 보안
 
-- 관리자 비밀번호는 env `ADMIN_PASSWORD`로만. **하드코딩 금지**. 비교는 timing-safe.
-- 관리자 세션: HMAC 서명된 httpOnly/secure/sameSite=lax 쿠키. 서명 키 env `ADMIN_SESSION_SECRET`.
+- 관리자 비밀번호는 env `ADMIN_PASSWORD`로만. **하드코딩 금지**. 비교는 timing-safe(`lib/admin-session.ts`, 양쪽을 sha256 다이제스트로 만든 뒤 `timingSafeEqual` — 길이가 달라도 안전).
+- 관리자 세션: HMAC 서명된 httpOnly/secure(prod)/sameSite=lax 쿠키, 유효기간 7일. 서명 키 env `ADMIN_SESSION_SECRET`. `requireAdminSession()`을 모든 `/admin/**` 페이지·서버 액션 맨 위에서 호출.
+- 관리자 로그인에도 rate limit (IP당 10분 10회) — 비밀번호 하나뿐이라 무차별 대입 방지가 특히 중요.
 - 코드 조회 API(`/my/[code]` 및 관련 액션)에 **인메모리 rate limit** (IP 기준, `lib/rate-limit.ts`).
   - 서버리스 인스턴스 간 공유되지 않는 한계는 인지하고 수용 (MVP).
 - 모든 입력은 zod 스키마(`lib/validation.ts`, 클라이언트/서버 공용)로 검증. 금액은 1,000원 단위 정수, 최소 1,000원 · 최대 1,000,000원.
 - 후원 생성 Server Action에도 rate limit (IP당 10분 10회).
-- 공개 API/페이지는 `isAnonymous`, `isAmountPublic`을 **서버에서** 마스킹한 뒤 내려보낸다 (클라이언트 마스킹 금지). `code`는 공개 응답에 절대 포함하지 않는다.
+- 공개 API/페이지는 `isAnonymous`, `isAmountPublic`을 **서버에서** 마스킹한 뒤 내려보낸다 (클라이언트 마스킹 금지). `code`는 공개 응답에 절대 포함하지 않는다. 관리자 화면(`listPledgesForAdmin`)은 마스킹 없이 실제 값 그대로.
+- 상품 URL OG 스크래핑(`lib/og-scrape.ts`)은 관리자가 지정한 URL로 서버가 요청을 보낸다는 점에서 SSRF 표면이지만, 세션 인증된 단일 신뢰 관리자만 호출 가능(본인이 직접 curl 치는 것과 같은 신뢰 수준). 최소 방어로 http(s) 프로토콜만 허용 + 사설/루프백 호스트 차단 + 5초 타임아웃 + 응답 500KB 캡. 완전한 SSRF 방어(DNS 재조회 기반 사설대역 검사 등)는 아님 — 알고 수용.
+- `/admin/**`는 `robots: { index: false, follow: false }` (레이아웃 metadata).
 
 ## 환경변수
 
@@ -105,6 +110,7 @@
 | `ADMIN_PASSWORD` | 관리자 비밀번호 |
 | `ADMIN_SESSION_SECRET` | 관리자 세션 쿠키 서명 키 (32바이트 이상 랜덤) |
 | `DEFAULT_CAMPAIGN_SLUG` | `/` 접속 시 이동할 캠페인 (선택) |
+| `NEXT_PUBLIC_SITE_URL` | OG 이미지 등 절대 URL 기준 도메인 (선택 — Vercel이면 배포 도메인으로 자동 추정, `lib/metadata.ts`) |
 
 ## Postgres 이식 원칙
 
@@ -165,11 +171,21 @@
    - 금액: 1~10만원 만원 단위 버튼 + 직접 입력(1,000원 단위, 최소 1,000원). 버튼과 입력값 양방향 동기화
    - 이름/메시지/익명여부/금액공개여부 입력 → 송금 안내(카카오페이·토스 링크, 계좌 복사) → "송금했어요" 클릭 시 PENDING 저장 → 코드 발급 화면
    - 송금 안내 단계까지는 DB에 아무것도 저장하지 않는다. 코드 발급 화면은 새로고침하면 사라지므로 캡처 안내를 강하게
-4. [ ] 성공 페이지 `/c/[slug]/success`
-   - 첫 진입 1회만 confetti (localStorage 기록), 이후엔 애니메이션 없이 감사 화면
-   - 후원자 목록을 엔딩 크레딧처럼 아래→위로 천천히 스크롤. `prefers-reduced-motion` 대응
-5. [ ] 공유: `generateMetadata`로 카카오톡 OG 태그 (캠페인 제목·썸네일·"OO님의 생일선물에 보태기"). 썸네일 없으면 기본 이미지
-6. [ ] 관리자 `/admin`
-   - 캠페인 생성/수정(목표금액·마감일·상품 URL·계좌정보), 수동 마감 버튼
-   - 후원 목록 테이블(금액 항상 노출), PENDING→CONFIRMED 확인 버튼
-   - 상품 URL 입력 시 OG 태그 스크래핑으로 제목·썸네일 자동 채움 (실패 시 직접 입력)
+   - 부수로 캠페인 메인 `/c/[slug]`도 함께 구현 (완료 화면·마감 안내가 여길 링크하는데 없었음). 공개 후원자 목록 마스킹은 `lib/pledge.ts`의 `getPublicPledges`
+4. [x] 성공 페이지 `/c/[slug]/success`
+   - 첫 진입 1회만 confetti (localStorage 기록, `ConfettiOnce`), 이후엔 애니메이션 없이 감사 화면
+   - 후원자 목록을 엔딩 크레딧처럼 아래→위로 천천히 스크롤 (`CreditsScroll`). 항목 5개 미만이면 굳이 안 돌리고 고정 목록
+   - `prefers-reduced-motion`: JS에서 먼저 분기(컨페티는 아예 생성 안 함, 크레딧은 정적 목록) + `motion-safe:`/전역 CSS로 이중 방어
+   - 설명(마크다운)은 `react-markdown`(+ remark-gfm)으로 렌더 — raw HTML은 기본적으로 무시됨 (라이브러리 기본 동작, 별도 sanitize 불필요)
+5. [x] 공유: `generateMetadata`로 카카오톡 OG 태그 (캠페인 제목·썸네일·"OO님의 생일선물에 보태기"). 썸네일 없으면 기본 이미지
+   - 공통 로직은 `lib/metadata.ts`의 `campaignMetadata()` — `/c/[slug]`(제목 "…에 보태기")와 `/c/[slug]/success`(제목 "…펀딩 완료!")에서 공용
+   - `metadataBase`는 루트 layout에 설정 (`siteUrl()`: `NEXT_PUBLIC_SITE_URL` → Vercel 배포 도메인 → localhost)
+   - 이미지: `thumbnailUrl`이 있으면 그대로 사용(실제 비율을 모르니 width/height 힌트는 안 줌), 없으면 `public/og-default.png`(1200×630, `scripts/generate-og-default.tsx`로 생성 — `next/og`의 `ImageResponse` + 갈무리 폰트. 다시 만들려면 `npx tsx scripts/generate-og-default.tsx`)
+   - description은 마크다운 기호를 걷어낸 평문 80자 요약
+6. [x] 관리자 `/admin`
+   - 캠페인 생성/수정(목표금액·마감일·상품 URL·계좌정보), 수동 마감 버튼(2단계 확인, OPEN일 때만 노출)
+   - 후원 목록 테이블(금액·이름·코드 항상 노출), PENDING→CONFIRMED 확인 버튼
+   - 상품 URL 입력 시 OG 태그 스크래핑으로 제목·썸네일 자동 채움 (실패 시 직접 입력) — `lib/og-scrape.ts`, 정규식 기반(HTML 파서 미사용)
+   - slug는 생성 후 수정 불가(폼에서 hidden으로 유지) — 공유된 링크가 깨지지 않게
+   - CLOSED는 폼에서 되돌릴 수 없음(터미널 상태). DRAFT↔OPEN만 select로 토글
+   - 두 useActionState(`saveCampaign`/`fetchProductOgAction`)를 버튼별 `formAction`으로 한 폼에 공존시킴
