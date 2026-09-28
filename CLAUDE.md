@@ -95,6 +95,7 @@
 - 관리자 세션: HMAC 서명된 httpOnly/secure(prod)/sameSite=lax 쿠키, 유효기간 7일. 서명 키 env `ADMIN_SESSION_SECRET`. `requireAdminSession()`을 모든 `/admin/**` 페이지·서버 액션 맨 위에서 호출.
 - 관리자 로그인에도 rate limit (IP당 10분 10회) — 비밀번호 하나뿐이라 무차별 대입 방지가 특히 중요.
 - 코드 조회 API(`/my/[code]` 및 관련 액션)에 **인메모리 rate limit** (IP 기준, `lib/rate-limit.ts`).
+  - 키별로 따로 센다: `my-lookup` 조회 IP당 10분 20회, `my-edit`·`my-cancel` 각각 IP당 10분 10회.
   - 서버리스 인스턴스 간 공유되지 않는 한계는 인지하고 수용 (MVP).
 - 모든 입력은 zod 스키마(`lib/validation.ts`, 클라이언트/서버 공용)로 검증. 금액은 1,000원 단위 정수, 최소 1,000원 · 최대 1,000,000원.
 - 후원 생성 Server Action에도 rate limit (IP당 10분 10회).
@@ -154,12 +155,21 @@
 | `npm run db:migrate` | 스키마 변경 → 마이그레이션 (`prisma migrate dev`, 이후 `npx prisma generate`) |
 | `npm run db:seed` | 예시 캠페인 `/c/dasom` + 후원 4건 (다시 실행하면 초기화) |
 | `npm run db:studio` | DB 브라우저 |
+| `npm test` | Vitest 1회 실행 (`npm run test:watch`는 watch 모드) |
 
 ## 코드 컨벤션
 
 - 데이터 변경은 Server Actions 우선, 외부 호출이 필요한 경우만 Route Handler.
 - DB 접근은 `lib/` 헬퍼를 통해서만 (페이지 컴포넌트에서 prisma 직접 호출 지양).
 - UI 문구는 한국어, 톤은 키치하게.
+
+## 테스트
+
+- Vitest(node 환경), `src/**/*.test.ts`. 대상은 `lib/`의 규칙 — 컴포넌트/페이지 테스트는 없음(async 서버 컴포넌트는 Vitest 미지원).
+- DB 규칙은 모킹하지 않고 실제 SQLite `prisma/test.db`에 붙여 검증. `src/test/global-setup.ts`가 매 실행마다 새로 만들고(`migrate deploy`) 끝나면 지운다. dev.db는 건드리지 않음.
+  - 픽스처는 `src/test/db.ts`의 `makeCampaign`/`makePledge`, 각 테스트 전 `resetDb`. 같은 DB 파일을 쓰므로 `fileParallelism: false`.
+- `server-only`는 `vitest.config.mts`에서 빈 모듈로 alias. `next/headers`가 필요한 곳은 `vi.mock` (예: `admin-session.test.ts`의 쿠키 저장소).
+- vitest 5는 `@types/node` 22+를 요구해서 4.x로 고정.
 
 ## 구현 로드맵
 
@@ -189,3 +199,10 @@
    - slug는 생성 후 수정 불가(폼에서 hidden으로 유지) — 공유된 링크가 깨지지 않게
    - CLOSED는 폼에서 되돌릴 수 없음(터미널 상태). DRAFT↔OPEN만 select로 토글
    - 두 useActionState(`saveCampaign`/`fetchProductOgAction`)를 버튼별 `formAction`으로 한 폼에 공존시킴
+7. [x] 루트 리다이렉트 `/` + 내 후원 `/my/[code]`
+   - `/`: `getDefaultCampaignSlug()`(`lib/campaign.ts`) — `DEFAULT_CAMPAIGN_SLUG` → 없으면 최근 OPEN 캠페인을 `getCampaign()`으로 하나씩 열어 lazy 마감 체크를 거친 뒤 여전히 OPEN인 첫 번째. 하나도 없으면 안내 화면
+   - `/`는 `export const dynamic = "force-dynamic"` — 안 붙이면 빌드 때 정적 프리렌더돼서 새 캠페인·마감이 재배포 전까지 반영되지 않음
+   - `/my/[code]`: URL의 코드를 `normalizePledgeCode`로 정규화 후 조회. 없는 코드·rate limit 초과 모두 같은 톤의 안내 카드(코드 분실 시 주인공에게 문의 안내 포함)
+   - 수정/취소 로직은 `lib/pledge.ts`의 `updatePledgeByCode`/`cancelPledgeByCode` — 캠페인 OPEN 검사 후 `updateMany`의 `where: status in [PENDING, CONFIRMED]`로 조건을 원자적으로 걸어 동시 요청에도 CANCELLED를 되살리지 않음
+   - 수정 입력은 후원 생성과 같은 `pledgeInputSchema` 재사용. 금액이 바뀐 CONFIRMED만 PENDING으로 되돌림(이름·메시지만 바꾸면 유지)
+   - 성공 시 `/my/[code]`, `/c/[slug]`, `/c/[slug]/success`를 `revalidatePath`
