@@ -1,5 +1,6 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
+import { getCampaignById } from "./campaign";
 import { generatePledgeCode } from "./pledge-code";
 import { prisma } from "./prisma";
 import type { PledgeInput } from "./validation";
@@ -97,4 +98,66 @@ export async function confirmPledge(id: string) {
     data: { status: "CONFIRMED" },
   });
   if (result.count === 0) throw new Error("입금 대기 중인 후원만 확인 처리할 수 있어요");
+}
+
+// ---- 내 후원 조회/수정/취소 (/my/[code]) ----
+
+/** 코드로 후원을 조회한다. 코드는 서버 발급이라 전역 unique — 본인 확인 수단은 이 코드 자체뿐. */
+export function getPledgeByCode(code: string) {
+  return prisma.pledge.findUnique({ where: { code } });
+}
+
+type MutationResult<T extends object> = ({ ok: true } & T) | { ok: false; error: string };
+
+/**
+ * 수정 가능 조건: pledge.status ∈ {PENDING, CONFIRMED} AND campaign.status == OPEN.
+ * CONFIRMED 상태에서 금액을 바꾸면 재입금 확인이 필요하므로 PENDING으로 되돌린다.
+ */
+export async function updatePledgeByCode(
+  code: string,
+  input: PledgeInput,
+): Promise<MutationResult<{ slug: string; revertedToPending: boolean }>> {
+  const pledge = await prisma.pledge.findUnique({ where: { code } });
+  if (!pledge) return { ok: false, error: "그런 코드를 찾을 수 없어요" };
+
+  const campaign = await getCampaignById(pledge.campaignId);
+  if (!campaign || campaign.status !== "OPEN") {
+    return { ok: false, error: "마감된 펀딩은 수정할 수 없어요" };
+  }
+
+  const revertedToPending = pledge.status === "CONFIRMED" && input.amount !== pledge.amount;
+  const result = await prisma.pledge.updateMany({
+    where: { id: pledge.id, status: { in: ["PENDING", "CONFIRMED"] } },
+    data: {
+      displayName: input.displayName,
+      message: input.message || null,
+      isAnonymous: input.isAnonymous,
+      isAmountPublic: input.isAmountPublic,
+      amount: input.amount,
+      ...(revertedToPending ? { status: "PENDING" as const } : {}),
+    },
+  });
+  if (result.count === 0) return { ok: false, error: "지금은 수정할 수 없어요" };
+  return { ok: true, slug: campaign.slug, revertedToPending };
+}
+
+/** 취소는 삭제가 아니라 soft delete. CONFIRMED였다면 환불은 관리자가 수동으로 처리한다. */
+export async function cancelPledgeByCode(
+  code: string,
+): Promise<MutationResult<{ slug: string; wasConfirmed: boolean }>> {
+  const pledge = await prisma.pledge.findUnique({ where: { code } });
+  if (!pledge) return { ok: false, error: "그런 코드를 찾을 수 없어요" };
+
+  const campaign = await getCampaignById(pledge.campaignId);
+  if (!campaign || campaign.status !== "OPEN") {
+    return { ok: false, error: "마감된 펀딩은 취소할 수 없어요" };
+  }
+
+  const wasConfirmed = pledge.status === "CONFIRMED";
+  const result = await prisma.pledge.updateMany({
+    where: { id: pledge.id, status: { in: ["PENDING", "CONFIRMED"] } },
+    data: { status: "CANCELLED" },
+  });
+  if (result.count === 0) return { ok: false, error: "이미 취소된 후원이에요" };
+  return { ok: true, slug: campaign.slug, wasConfirmed };
 }

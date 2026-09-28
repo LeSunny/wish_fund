@@ -47,6 +47,26 @@ export async function getCampaignTotals(campaignId: string) {
   return { confirmed: sumOf("CONFIRMED"), pending: sumOf("PENDING") };
 }
 
+/**
+ * "/" 접속 시 이동할 캠페인 slug. env가 있으면 그대로 쓰고(상태 판단은 /c/[slug]에 맡김),
+ * 없으면 가장 최근에 만들어진 OPEN 캠페인을 찾는다 (마감 지난 건 lazy close 후 건너뛴다).
+ */
+export async function getDefaultCampaignSlug() {
+  const envSlug = process.env.DEFAULT_CAMPAIGN_SLUG;
+  if (envSlug) return envSlug;
+
+  const openCampaigns = await prisma.campaign.findMany({
+    where: { status: "OPEN" },
+    orderBy: { createdAt: "desc" },
+    select: { slug: true },
+  });
+  for (const { slug } of openCampaigns) {
+    const campaign = await getCampaign(slug);
+    if (campaign?.status === "OPEN") return slug;
+  }
+  return null;
+}
+
 // ---- 관리자 ----
 
 export function listCampaignsForAdmin() {
