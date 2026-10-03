@@ -10,8 +10,10 @@
 - Next.js 16 (App Router) + TypeScript + Tailwind CSS v4
   - Next 16은 학습 데이터와 API가 다를 수 있음 → `node_modules/next/dist/docs/` 먼저 확인
   - Tailwind v4는 `tailwind.config.*` 없이 `src/app/globals.css`의 `@theme`가 설정 파일
-- Prisma 7 + SQLite (로컬). 배포 시 Postgres로 교체 가능하도록 스키마 작성
-  - Prisma 7 방식: 연결 URL은 `prisma.config.ts`, 런타임은 드라이버 어댑터(`src/lib/prisma.ts`, better-sqlite3)
+- Prisma 7 + Postgres (로컬: brew `postgresql@17`, 배포: Neon)
+  - Prisma 7 방식: CLI(migrate) 연결 URL은 `prisma.config.ts`, 런타임은 드라이버 어댑터(`src/lib/prisma.ts`, `@prisma/adapter-pg`)
+  - `migrate dev`가 클라이언트를 재생성하지 않으므로 스키마 변경 후 `npx prisma generate` 필수
+  - `prisma migrate reset`은 AI 에이전트 실행 시 Prisma가 사용자 동의를 요구하며 막는다 → 에이전트는 쓰지 말 것
   - 클라이언트는 `src/generated/prisma`에 생성 (gitignore, `postinstall`에서 `prisma generate`). import는 `@/generated/prisma/client`
   - `prisma` 패키지 npm `latest` 태그가 8.0 RC를 가리키므로 7.x로 고정해서 설치할 것
 - zod (모든 외부 입력 검증)
@@ -107,18 +109,29 @@
 
 | 이름 | 설명 |
 |---|---|
-| `DATABASE_URL` | 로컬: `file:./prisma/dev.db` / 배포: Postgres URL |
+| `DATABASE_URL` | 런타임 연결. 로컬: `postgresql://<whoami>@localhost:5432/wish_fund` (사용자명 생략 불가 — Prisma는 OS 사용자를 기본값으로 안 씀) / 배포: Neon pooled URL (Vercel 연동 시 자동) |
+| `DATABASE_URL_UNPOOLED` | 마이그레이션용 직접 연결 (Neon 연동 시 자동). 없으면 `DATABASE_URL` 사용 (`prisma.config.ts`) |
+| `TEST_DATABASE_URL` | 테스트 DB (선택, 기본 `postgresql://<whoami>@localhost:5432/wish_fund_test`) |
 | `ADMIN_PASSWORD` | 관리자 비밀번호 |
 | `ADMIN_SESSION_SECRET` | 관리자 세션 쿠키 서명 키 (32바이트 이상 랜덤) |
 | `DEFAULT_CAMPAIGN_SLUG` | `/` 접속 시 이동할 캠페인 (선택) |
 | `NEXT_PUBLIC_SITE_URL` | OG 이미지 등 절대 URL 기준 도메인 (선택 — Vercel이면 배포 도메인으로 자동 추정, `lib/metadata.ts`) |
 
-## Postgres 이식 원칙
+## DB 원칙
 
-- Prisma `enum` 사용 (SQLite는 Prisma 6.2+에서 지원).
-- 금액은 `Int` (원 단위, 소수 없음). `Float`/`Decimal` 사용 금지.
-- SQLite 전용 기능/raw SQL 사용 금지.
-- 전환 절차: schema `provider` → `postgresql`, `src/lib/prisma.ts`·`prisma/seed.ts` 어댑터 → `@prisma/adapter-pg`, 기존 `prisma/migrations`(SQLite용 SQL)는 지우고 새로 `migrate dev`.
+- 로컬·테스트·배포 모두 Postgres (2026-09-29 SQLite에서 전환, 마이그레이션은 Postgres용 `init` 하나로 새로 시작).
+- Prisma `enum` 사용. 금액은 `Int` (원 단위, 소수 없음). `Float`/`Decimal` 사용 금지.
+- raw SQL 지양 — Prisma 쿼리로 표현.
+- 로컬 준비(최초 1회): `brew install postgresql@17 && brew services start postgresql@17`, `createdb wish_fund && createdb wish_fund_test`, `npm run db:deploy && npm run db:seed`.
+
+## 배포 (Vercel + Neon)
+
+1. Vercel에 GitHub 레포 import (프레임워크 자동 인식).
+2. Vercel 프로젝트 → Storage → Neon Postgres 생성·연결 → `DATABASE_URL`(pooled)·`DATABASE_URL_UNPOOLED` 자동 주입.
+   - Preview 배포가 prod DB를 건드리지 않게 Neon 연동의 "preview branch" 옵션을 켜둘 것 (아래 빌드가 migrate를 돌리므로).
+3. 나머지 env 직접 입력: `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`(`openssl rand -base64 32`), 필요하면 `DEFAULT_CAMPAIGN_SLUG`·`NEXT_PUBLIC_SITE_URL`.
+4. 빌드는 `vercel-build` 스크립트(`prisma migrate deploy && next build`)가 자동 사용됨 — 배포 때마다 미적용 마이그레이션 적용. 클라이언트 생성은 `postinstall`.
+5. 첫 배포 후 `/admin`에서 캠페인 생성 (seed는 prod에 돌리지 않음).
 
 ## 디자인 시스템 (Y2K 레트로 웹)
 
@@ -153,6 +166,7 @@
 |---|---|
 | `npm run dev` | 개발 서버 |
 | `npm run db:migrate` | 스키마 변경 → 마이그레이션 (`prisma migrate dev`, 이후 `npx prisma generate`) |
+| `npm run db:deploy` | 미적용 마이그레이션만 적용 (`prisma migrate deploy`, 비파괴) |
 | `npm run db:seed` | 예시 캠페인 `/c/dasom` + 후원 4건 (다시 실행하면 초기화) |
 | `npm run db:studio` | DB 브라우저 |
 | `npm test` | Vitest 1회 실행 (`npm run test:watch`는 watch 모드) |
@@ -166,8 +180,9 @@
 ## 테스트
 
 - Vitest(node 환경), `src/**/*.test.ts`. 대상은 `lib/`의 규칙 — 컴포넌트/페이지 테스트는 없음(async 서버 컴포넌트는 Vitest 미지원).
-- DB 규칙은 모킹하지 않고 실제 SQLite `prisma/test.db`에 붙여 검증. `src/test/global-setup.ts`가 매 실행마다 새로 만들고(`migrate deploy`) 끝나면 지운다. dev.db는 건드리지 않음.
-  - 픽스처는 `src/test/db.ts`의 `makeCampaign`/`makePledge`, 각 테스트 전 `resetDb`. 같은 DB 파일을 쓰므로 `fileParallelism: false`.
+- DB 규칙은 모킹하지 않고 로컬 Postgres 테스트 DB(`wish_fund_test`)에 붙여 검증. `src/test/global-setup.ts`가 실행마다 `migrate deploy`(비파괴)만 하고, 데이터는 각 테스트의 `resetDb`가 비운다. dev DB는 건드리지 않음.
+  - 스키마가 꼬이면 직접 `dropdb wish_fund_test && createdb wish_fund_test`.
+  - 픽스처는 `src/test/db.ts`의 `makeCampaign`/`makePledge`. 같은 DB를 쓰므로 `fileParallelism: false`.
 - `server-only`는 `vitest.config.mts`에서 빈 모듈로 alias. `next/headers`가 필요한 곳은 `vi.mock` (예: `admin-session.test.ts`의 쿠키 저장소).
 - vitest 5는 `@types/node` 22+를 요구해서 4.x로 고정.
 
@@ -206,3 +221,8 @@
    - 수정/취소 로직은 `lib/pledge.ts`의 `updatePledgeByCode`/`cancelPledgeByCode` — 캠페인 OPEN 검사 후 `updateMany`의 `where: status in [PENDING, CONFIRMED]`로 조건을 원자적으로 걸어 동시 요청에도 CANCELLED를 되살리지 않음
    - 수정 입력은 후원 생성과 같은 `pledgeInputSchema` 재사용. 금액이 바뀐 CONFIRMED만 PENDING으로 되돌림(이름·메시지만 바꾸면 유지)
    - 성공 시 `/my/[code]`, `/c/[slug]`, `/c/[slug]/success`를 `revalidatePath`
+8. [x] Postgres 전환 + Vercel 배포 준비
+   - SQLite → Postgres (어댑터 `@prisma/adapter-pg`), 마이그레이션 새로 생성, 테스트 DB도 Postgres
+   - `prisma.config.ts`는 `DATABASE_URL_UNPOOLED` 우선(Neon 직접 연결), 런타임은 pooled `DATABASE_URL`
+   - `vercel-build` 스크립트로 배포 시 `migrate deploy`. 절차는 "배포" 섹션
+   - 검증: 프로덕션 빌드(`next start`) + 로컬 Postgres로 후원→입금 확인→수정→취소→마감→성공 페이지 전체 흐름(헤드리스 Chrome) 통과

@@ -1,10 +1,10 @@
 import "server-only";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 
-// Postgres 전환 시: @prisma/adapter-pg 의 PrismaPg 로 교체
+// 런타임 연결은 DATABASE_URL (Neon이면 pooled URL). 마이그레이션용 직접 연결은 prisma.config.ts 참고.
 function createClient() {
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL! });
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
   return new PrismaClient({ adapter });
 }
 
