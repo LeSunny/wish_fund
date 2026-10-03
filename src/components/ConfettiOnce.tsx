@@ -43,9 +43,16 @@ export function ConfettiOnce({ storageKey }: { storageKey: string }) {
     // 다시 반응할 외부 스토어가 없어 useSyncExternalStore로 옮길 수 없다 (마운트-1회 한정).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPieces(makePieces());
+  }, [storageKey]);
+
+  // 치우는 타이머는 "조각이 있을 때"에 따로 건다. 위 effect 안에서 걸면 StrictMode의
+  // 실행→정리→재실행 중 정리에서 타이머가 취소되고, 재실행은 이미 본 것으로 판정해 다시 안 걸어서
+  // 조각(전체 화면 overlay)이 영영 남는다.
+  useEffect(() => {
+    if (!pieces) return;
     const timer = setTimeout(() => setPieces(null), DURATION_MS + 400);
     return () => clearTimeout(timer);
-  }, [storageKey]);
+  }, [pieces]);
 
   if (!pieces) return null;
 
