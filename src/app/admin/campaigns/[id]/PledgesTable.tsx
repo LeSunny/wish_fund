@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 import { formatWon } from "@/lib/format";
 import { listPledgesForAdmin } from "@/lib/pledge";
 import { confirmPledgeAction } from "../../actions";
+import { UnconfirmPledgeButton } from "./UnconfirmPledgeButton";
 
 const STATUS_LABEL = { PENDING: "입금 대기", CONFIRMED: "입금 확인", CANCELLED: "취소됨" } as const;
 const STATUS_TONE = { PENDING: "bg-butter", CONFIRMED: "bg-periwinkle", CANCELLED: "bg-white" } as const;
@@ -52,6 +53,7 @@ export async function PledgesTable({ campaignId, slug }: { campaignId: string; s
                 </Button>
               </form>
             )}
+            {p.status === "CONFIRMED" && <UnconfirmPledgeButton slug={slug} pledgeId={p.id} />}
           </div>
         </div>
       ))}

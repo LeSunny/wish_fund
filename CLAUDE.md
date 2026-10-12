@@ -101,6 +101,7 @@
   - 취소는 삭제가 아니라 `status = CANCELLED` (soft).
   - CONFIRMED 후원의 금액을 수정하면 `PENDING`으로 되돌린다 (재입금 확인 필요). CONFIRMED 후원 취소 시 환불은 수동이라는 안내를 노출.
 - `PENDING → CONFIRMED` 전환은 관리자만 (입금 확인 후).
+- `CONFIRMED → PENDING`(입금 확인 취소)도 관리자만, 2단계 확인 버튼. 실수 정정용이라 **캠페인 마감 후에도 가능**. CANCELLED는 되살리지 않음 (`lib/pledge.ts`의 `unconfirmPledge`).
 
 ### 후원 코드 규칙
 - 형식: `{한글명사}-{10~99}-{한글명사}` (예: `귤-47-딸기`). 명사 목록은 `lib/pledge-code.ts`에 상수로.

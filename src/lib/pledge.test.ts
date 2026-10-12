@@ -4,6 +4,7 @@ import {
   cancelPledgeByCode,
   confirmPledge,
   createPendingPledge,
+  unconfirmPledge,
   getPublicPledges,
   updatePledgeByCode,
 } from "./pledge";
@@ -75,6 +76,20 @@ describe("confirmPledge", () => {
 
     await expect(confirmPledge(cancelled.id)).rejects.toThrow();
     await expect(confirmPledge(pending.id)).rejects.toThrow(); // 이미 CONFIRMED
+  });
+});
+
+describe("unconfirmPledge", () => {
+  it("CONFIRMED만 PENDING으로 되돌린다 (마감된 캠페인도 가능)", async () => {
+    const closed = await makeCampaign({ status: "CLOSED" });
+    const confirmed = await makePledge(closed.id, { status: "CONFIRMED" });
+    const cancelled = await makePledge(closed.id, { status: "CANCELLED" });
+
+    await unconfirmPledge(confirmed.id);
+    expect((await prisma.pledge.findUniqueOrThrow({ where: { id: confirmed.id } })).status).toBe("PENDING");
+
+    await expect(unconfirmPledge(cancelled.id)).rejects.toThrow(); // 취소된 후원은 되살리지 않음
+    await expect(unconfirmPledge(confirmed.id)).rejects.toThrow(); // 이미 PENDING
   });
 });
 

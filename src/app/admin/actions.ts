@@ -12,7 +12,7 @@ import {
 } from "@/lib/admin-session";
 import { closeCampaignNow, createCampaign, isSlugTaken, updateCampaign } from "@/lib/campaign";
 import { fetchOpenGraph } from "@/lib/og-scrape";
-import { confirmPledge } from "@/lib/pledge";
+import { confirmPledge, unconfirmPledge } from "@/lib/pledge";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
 import { adminPasswordSchema, campaignInputSchema, campaignUpdateSchema, slugSchema } from "@/lib/validation";
 
@@ -151,6 +151,18 @@ export async function confirmPledgeAction(slug: string, pledgeId: string) {
     await confirmPledge(pledgeId);
   } catch {
     // 이미 CONFIRMED/CANCELLED인 뒤 중복 클릭 등 — 조용히 무시, 화면은 최신 상태로 새로고침됨
+  }
+  revalidatePath(`/c/${slug}`);
+  revalidatePath(`/c/${slug}/success`);
+}
+
+/** 입금 확인 취소 → 입금 대기. 마감된 캠페인에서도 가능 (관리자 실수 정정). */
+export async function unconfirmPledgeAction(slug: string, pledgeId: string) {
+  await requireAdminSession();
+  try {
+    await unconfirmPledge(pledgeId);
+  } catch {
+    // 이미 PENDING/CANCELLED(후원자가 그새 수정·취소 등) — 조용히 무시, 화면은 최신 상태로 새로고침됨
   }
   revalidatePath(`/c/${slug}`);
   revalidatePath(`/c/${slug}/success`);

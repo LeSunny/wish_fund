@@ -100,6 +100,18 @@ export async function confirmPledge(id: string) {
   if (result.count === 0) throw new Error("입금 대기 중인 후원만 확인 처리할 수 있어요");
 }
 
+/**
+ * 입금 확인 취소 (관리자 실수 정정). CONFIRMED일 때만 PENDING으로 되돌린다.
+ * 캠페인 상태와 무관 — 마감 후에도 관리자가 바로잡을 수 있어야 한다.
+ */
+export async function unconfirmPledge(id: string) {
+  const result = await prisma.pledge.updateMany({
+    where: { id, status: "CONFIRMED" },
+    data: { status: "PENDING" },
+  });
+  if (result.count === 0) throw new Error("입금 확인된 후원만 되돌릴 수 있어요");
+}
+
 // ---- 내 후원 조회/수정/취소 (/my/[code]) ----
 
 /** 코드로 후원을 조회한다. 코드는 서버 발급이라 전역 unique — 본인 확인 수단은 이 코드 자체뿐. */
