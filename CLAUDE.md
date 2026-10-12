@@ -77,6 +77,7 @@
 
 - **진행률** = `CONFIRMED` 합계 / `goalAmount`. `PENDING` 합계는 "입금 대기 중"으로 별도 표시. `CANCELLED`는 어디에도 합산하지 않음.
 - **마감**: `deadline`이 지나면 `CLOSED`. Vercel에 상시 워커가 없으므로 캠페인 조회 시점에 lazy 하게 검사·갱신한다 (`lib/campaign.ts`의 헬퍼 한 곳에서만 처리).
+- **마감일 시간대**: 관리자 폼의 `datetime-local` 값은 항상 한국 시간(+09:00)으로 해석·표시한다 (`lib/format.ts`의 `parseKstDatetimeLocal`/`toKstDatetimeLocal`). Vercel 서버는 UTC라 `new Date(값)`/`z.coerce.date`를 쓰면 9시간 밀림.
 - 목표 미달성이어도 마감 시 그대로 **성공 처리** (차액은 관리자 부담).
 - **초과 달성** 시 "남은 금액은 차(tea)값으로 쓸게요" 문구 노출.
 - **후원 완료 화면**: 코드를 크게 표시 + "캡처해두세요" 안내 + 복사 버튼 + `/my/[code]` 링크.

@@ -4,6 +4,7 @@ import { useActionState, useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, inputStyles, selectStyles, textareaStyles } from "@/components/ui/Field";
+import { toKstDatetimeLocal } from "@/lib/format";
 import { GOAL_AMOUNT_MAX } from "@/lib/validation";
 import { fetchProductOgAction, saveCampaign, type SaveCampaignState } from "../actions";
 
@@ -25,13 +26,8 @@ export type EditableCampaign = {
 
 const initialSaveState: SaveCampaignState = {};
 
-function toDatetimeLocalValue(date: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
 function oneWeekFromNow() {
-  return toDatetimeLocalValue(new Date(Date.now() + 7 * 86_400_000));
+  return toKstDatetimeLocal(new Date(Date.now() + 7 * 86_400_000));
 }
 
 export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
@@ -189,13 +185,13 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
                 className={inputStyles}
               />
             </Field>
-            <Field label="마감일시" htmlFor={`${id}-deadline`} error={fieldError("deadline")}>
+            <Field label="마감일시 (한국 시간)" htmlFor={`${id}-deadline`} error={fieldError("deadline")}>
               <input
                 id={`${id}-deadline`}
                 name="deadline"
                 type="datetime-local"
                 required
-                defaultValue={campaign ? toDatetimeLocalValue(campaign.deadline) : oneWeekFromNow()}
+                defaultValue={campaign ? toKstDatetimeLocal(campaign.deadline) : oneWeekFromNow()}
                 aria-invalid={!!fieldError("deadline")}
                 className={inputStyles}
               />

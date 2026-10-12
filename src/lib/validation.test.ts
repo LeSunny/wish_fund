@@ -73,6 +73,17 @@ describe("campaignInputSchema", () => {
     expect(parsed.deadline).toBeInstanceOf(Date);
   });
 
+  it("마감일은 서버 시간대와 무관하게 한국 시간으로 해석한다", () => {
+    const parsed = campaignInputSchema.parse(base);
+    expect(parsed.deadline.toISOString()).toBe("2026-12-31T14:59:00.000Z");
+  });
+
+  it("마감일 형식이 틀리면 거부한다", () => {
+    expect(campaignInputSchema.safeParse({ ...base, deadline: "" }).success).toBe(false);
+    expect(campaignInputSchema.safeParse({ ...base, deadline: "2026-13-01T00:00" }).success).toBe(false);
+    expect(campaignInputSchema.safeParse({ ...base, deadline: "내일" }).success).toBe(false);
+  });
+
   it("slug는 영문 소문자·숫자·하이픈만", () => {
     expect(campaignInputSchema.safeParse({ ...base, slug: "Dasom" }).success).toBe(false);
     expect(campaignInputSchema.safeParse({ ...base, slug: "다솜" }).success).toBe(false);

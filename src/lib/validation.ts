@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseKstDatetimeLocal } from "./format";
 
 // 클라이언트/서버 공용. 서버 전용 모듈을 import 하지 말 것.
 
@@ -67,7 +68,15 @@ export const campaignInputSchema = z.object({
     .int()
     .min(1_000, "최소 1,000원 이상으로 설정해주세요")
     .max(GOAL_AMOUNT_MAX, `최대 ${GOAL_AMOUNT_MAX.toLocaleString("ko-KR")}원까지예요`),
-  deadline: z.coerce.date({ error: "마감일을 입력해주세요" }),
+  // 폼의 datetime-local 값을 한국 시간으로 해석 (z.coerce.date는 서버 시간대를 따라가서 UTC 서버에선 9시간 밀림)
+  deadline: z.string().transform((v, ctx) => {
+    const date = parseKstDatetimeLocal(v);
+    if (!date) {
+      ctx.addIssue({ code: "custom", message: "마감일을 입력해주세요" });
+      return z.NEVER;
+    }
+    return date;
+  }),
   accountInfo: optionalText(200),
   kakaopayUrl: optionalUrl,
   tossUrl: optionalUrl,
