@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCampaign, makePledge, prisma, resetDb } from "@/test/db";
-import { closeCampaignNow, getCampaign, getCampaignTotals, getDefaultCampaignSlug } from "./campaign";
+import {
+  closeCampaignNow,
+  getCampaign,
+  getCampaignTotals,
+  getDefaultCampaignSlug,
+  isSlugTaken,
+} from "./campaign";
 
 beforeEach(resetDb);
 afterEach(() => vi.unstubAllEnvs());
@@ -79,5 +85,13 @@ describe("getDefaultCampaignSlug", () => {
     vi.stubEnv("DEFAULT_CAMPAIGN_SLUG", "");
     await makeCampaign({ status: "CLOSED" });
     expect(await getDefaultCampaignSlug()).toBeNull();
+  });
+});
+
+describe("isSlugTaken", () => {
+  it("이미 있는 slug면 true, 없으면 false (상태와 무관)", async () => {
+    const draft = await makeCampaign({ status: "DRAFT" });
+    expect(await isSlugTaken(draft.slug)).toBe(true);
+    expect(await isSlugTaken("no-such-slug")).toBe(false);
   });
 });

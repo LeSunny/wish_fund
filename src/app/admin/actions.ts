@@ -9,11 +9,11 @@ import {
   requireAdminSession,
   verifyAdminPassword,
 } from "@/lib/admin-session";
-import { closeCampaignNow, createCampaign, updateCampaign } from "@/lib/campaign";
+import { closeCampaignNow, createCampaign, isSlugTaken, updateCampaign } from "@/lib/campaign";
 import { fetchOpenGraph } from "@/lib/og-scrape";
 import { confirmPledge } from "@/lib/pledge";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
-import { adminPasswordSchema, campaignInputSchema } from "@/lib/validation";
+import { adminPasswordSchema, campaignInputSchema, slugSchema } from "@/lib/validation";
 
 function isUniqueViolation(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -106,6 +106,18 @@ export async function saveCampaign(
   revalidatePath(`/c/${parsed.data.slug}/success`);
   // 상세 페이지도 같은 폼이라 거기로 보내면 저장됐는지 티가 안 난다 → 목록으로
   redirect("/admin");
+}
+
+export type SlugCheckResult = { ok: true } | { ok: false; error: string };
+
+/** 새 캠페인 폼에서 입력 중인 공유 주소를 미리 검사 (형식 + 중복). */
+export async function checkSlugAction(slug: string): Promise<SlugCheckResult> {
+  await requireAdminSession();
+
+  const parsed = slugSchema.safeParse(slug);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "주소 형식을 확인해주세요" };
+  if (await isSlugTaken(parsed.data)) return { ok: false, error: "이미 사용 중인 주소예요" };
+  return { ok: true };
 }
 
 /** 마감일과 무관하게 지금 바로 마감. 관리자 상세 페이지에 남아 최신 상태를 본다. */

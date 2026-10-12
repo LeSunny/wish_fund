@@ -77,6 +77,12 @@ export function createCampaign(input: CampaignInput) {
   return prisma.campaign.create({ data: input });
 }
 
+/** 새 캠페인 폼에서 공유 주소 중복을 미리 알려주기 위한 조회. 최종 판정은 저장 시 DB unique 제약. */
+export async function isSlugTaken(slug: string) {
+  const found = await prisma.campaign.findUnique({ where: { slug }, select: { id: true } });
+  return found !== null;
+}
+
 export function updateCampaign(id: string, input: Omit<CampaignInput, "slug">) {
   // slug는 공유된 링크를 깨뜨릴 수 있어 생성 후에는 바꾸지 않는다 (폼에서도 수정 불가로 막음)
   return prisma.campaign.update({ where: { id }, data: input });

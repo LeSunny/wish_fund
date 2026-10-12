@@ -6,7 +6,13 @@ import { Card } from "@/components/ui/Card";
 import { Field, inputStyles, selectStyles, textareaStyles } from "@/components/ui/Field";
 import { toKstDatetimeLocal } from "@/lib/format";
 import { GOAL_AMOUNT_MAX } from "@/lib/validation";
-import { fetchProductOgAction, saveCampaign, type SaveCampaignState } from "../actions";
+import {
+  checkSlugAction,
+  fetchProductOgAction,
+  saveCampaign,
+  type SaveCampaignState,
+  type SlugCheckResult,
+} from "../actions";
 
 export type EditableCampaign = {
   id: string;
@@ -48,7 +54,28 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
     if (ogState.thumbnailUrl) setThumbnailUrl(ogState.thumbnailUrl);
   }, [ogState]);
 
+  // 새 캠페인일 때만: 공유 주소를 입력하는 동안 형식·중복을 미리 검사 (입력이 멈추고 0.4초 뒤)
+  const [slug, setSlug] = useState("");
+  const [slugCheck, setSlugCheck] = useState<{ slug: string; result: SlugCheckResult } | null>(null);
+  useEffect(() => {
+    if (campaign || !slug) return;
+    let stale = false;
+    const timer = setTimeout(async () => {
+      const result = await checkSlugAction(slug);
+      if (!stale) setSlugCheck({ slug, result });
+    }, 400);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [campaign, slug]);
+  // 지금 입력값에 대한 결과만 쓴다 (검사 중이거나 예전 입력의 결과면 null)
+  const slugResult = slugCheck?.slug === slug ? slugCheck.result : null;
+  const slugTaken = slugResult?.ok === false;
+
   const fieldError = (key: string) => state.fieldErrors?.[key];
+  // 저장 후 서버가 준 에러보다 지금 입력값을 검사한 결과를 우선
+  const slugError = slugResult ? (slugResult.ok ? undefined : slugResult.error) : fieldError("slug");
   const closed = campaign?.status === "CLOSED";
 
   return (
@@ -67,8 +94,12 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
             <Field
               label="공유 주소 (slug)"
               htmlFor={`${id}-slug`}
-              hint="영문 소문자·숫자·하이픈만. 예) dasom-2026"
-              error={fieldError("slug")}
+              hint={
+                slugResult?.ok
+                  ? `✓ 쓸 수 있는 주소예요 → /c/${slug}`
+                  : "영문 소문자·숫자·하이픈만. 예) dasom-2026"
+              }
+              error={slugError}
             >
               <input
                 id={`${id}-slug`}
@@ -76,7 +107,12 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
                 required
                 pattern="[a-z0-9-]+"
                 placeholder="dasom-2026"
-                aria-invalid={!!fieldError("slug")}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                value={slug}
+                onChange={(e) => setSlug(e.target.value.trim().toLowerCase())}
+                aria-invalid={!!slugError}
                 className={inputStyles}
               />
             </Field>
@@ -283,7 +319,7 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
         </p>
       )}
 
-      <Button type="submit" size="lg" disabled={pending} block>
+      <Button type="submit" size="lg" disabled={pending || slugTaken} block>
         {pending ? "저장 중..." : campaign ? "저장하기" : "캠페인 만들기"}
       </Button>
     </form>
