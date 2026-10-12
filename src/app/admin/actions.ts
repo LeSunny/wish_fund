@@ -101,9 +101,11 @@ export async function saveCampaign(
   }
 
   revalidatePath("/admin");
+  revalidatePath(`/admin/campaigns/${targetId}`);
   revalidatePath(`/c/${parsed.data.slug}`);
   revalidatePath(`/c/${parsed.data.slug}/success`);
-  redirect(`/admin/campaigns/${targetId}`);
+  // 상세 페이지도 같은 폼이라 거기로 보내면 저장됐는지 티가 안 난다 → 목록으로
+  redirect("/admin");
 }
 
 /** 마감일과 무관하게 지금 바로 마감. 관리자 상세 페이지에 남아 최신 상태를 본다. */
