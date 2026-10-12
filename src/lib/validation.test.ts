@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 import { amountSchema, campaignInputSchema, campaignUpdateSchema, pledgeInputSchema } from "./validation";
 
 describe("amountSchema", () => {
-  it.each([1_000, 10_000, 57_000, 1_000_000])("허용: %i", (amount) => {
+  it.each([1_000, 1_234, 10_000, 57_500, 1_000_000])("허용: %i (1원 단위 자유)", (amount) => {
     expect(amountSchema.safeParse(amount).success).toBe(true);
   });
 
   it.each([
     [0, "최소"],
     [999, "최소"],
-    [1_500, "1,000원 단위"],
     [1_001_000, "최대"],
     [10_000.5, "숫자"],
   ])("거부: %d (%s)", (amount, messagePart) => {

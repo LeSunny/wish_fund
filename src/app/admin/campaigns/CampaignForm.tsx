@@ -52,9 +52,8 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
     campaign ? campaign.products.map(toProductDraft) : [emptyProduct()],
   );
   const [goalAmount, setGoalAmount] = useState(campaign ? String(campaign.goalAmount) : "");
-  // 가격을 적은 상품의 합계를 천 원 단위로 올림 (목표 금액 입력이 1,000원 단위)
-  const priceSum = products.reduce((sum, p) => sum + (p.price === "" ? 0 : Number(p.price)), 0);
-  const suggestedGoal = Math.ceil(priceSum / 1000) * 1000;
+  // 가격을 적은 상품의 합계 (목표 금액 제안용)
+  const suggestedGoal = products.reduce((sum, p) => sum + (p.price === "" ? 0 : Number(p.price)), 0);
 
   // 새 캠페인일 때만: 공유 주소를 입력하는 동안 형식·중복을 미리 검사 (입력이 멈추고 0.4초 뒤)
   const [slug, setSlug] = useState("");
@@ -181,7 +180,7 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
                 required
                 min={1000}
                 max={GOAL_AMOUNT_MAX}
-                step={1000}
+                step={1}
                 value={goalAmount}
                 onChange={(e) => setGoalAmount(e.target.value)}
                 aria-invalid={!!fieldError("goalAmount")}

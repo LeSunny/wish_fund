@@ -312,7 +312,7 @@ function EditForm({
             <Field
               label="직접 입력"
               htmlFor={`${id}-amount`}
-              hint="1,000원 단위 · 최소 1,000원"
+              hint="1원 단위로 자유롭게 · 최소 1,000원"
               error={amountError}
               errorId={`${id}-amount-error`}
             >
