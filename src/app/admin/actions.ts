@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { z } from "zod";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import {
@@ -13,7 +14,7 @@ import { closeCampaignNow, createCampaign, isSlugTaken, updateCampaign } from "@
 import { fetchOpenGraph } from "@/lib/og-scrape";
 import { confirmPledge } from "@/lib/pledge";
 import { getClientIp, rateLimit } from "@/lib/rate-limit";
-import { adminPasswordSchema, campaignInputSchema, slugSchema } from "@/lib/validation";
+import { adminPasswordSchema, campaignInputSchema, campaignUpdateSchema, slugSchema } from "@/lib/validation";
 
 function isUniqueViolation(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -60,8 +61,17 @@ function campaignInputFromFormData(formData: FormData) {
     kakaopayUrl: str("kakaopayUrl"),
     tossUrl: str("tossUrl"),
     thanksMessage: str("thanksMessage"),
-    status: str("status"),
+    // 마감된 캠페인은 폼에 상태 칸이 없다 → undefined (수정 스키마에서 선택)
+    status: formData.has("status") ? str("status") : undefined,
   };
+}
+
+function invalidInput(error: z.ZodError): SaveCampaignState {
+  const fieldErrors: Record<string, string> = {};
+  for (const issue of error.issues) {
+    fieldErrors[String(issue.path[0])] ??= issue.message;
+  }
+  return { error: "입력값을 확인해주세요", fieldErrors };
 }
 
 /** id가 있으면 수정, 없으면 생성. useActionState에 `saveCampaign.bind(null, id)`로 바인딩해서 쓴다. */
@@ -72,38 +82,33 @@ export async function saveCampaign(
 ): Promise<SaveCampaignState> {
   await requireAdminSession();
 
-  const parsed = campaignInputSchema.safeParse(campaignInputFromFormData(formData));
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0]);
-      fieldErrors[key] ??= issue.message;
-    }
-    return { error: "입력값을 확인해주세요", fieldErrors };
-  }
+  const input = campaignInputFromFormData(formData);
 
   let targetId: string;
-  try {
-    if (id) {
-      // slug는 수정 폼에 없음(생성 후 불변) — 구조분해로 걷어내고 나머지만 반영
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { slug: _slug, ...rest } = parsed.data;
-      await updateCampaign(id, rest);
-      targetId = id;
-    } else {
+  let slug: string;
+  if (id) {
+    const parsed = campaignUpdateSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    slug = (await updateCampaign(id, parsed.data)).slug;
+    targetId = id;
+  } else {
+    const parsed = campaignInputSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    try {
       targetId = (await createCampaign(parsed.data)).id;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        return { error: "이미 사용 중인 주소(slug)예요", fieldErrors: { slug: "다른 주소를 써주세요" } };
+      }
+      throw error;
     }
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return { error: "이미 사용 중인 주소(slug)예요", fieldErrors: { slug: "다른 주소를 써주세요" } };
-    }
-    throw error;
+    slug = parsed.data.slug;
   }
 
   revalidatePath("/admin");
   revalidatePath(`/admin/campaigns/${targetId}`);
-  revalidatePath(`/c/${parsed.data.slug}`);
-  revalidatePath(`/c/${parsed.data.slug}/success`);
+  revalidatePath(`/c/${slug}`);
+  revalidatePath(`/c/${slug}/success`);
   // 상세 페이지도 같은 폼이라 거기로 보내면 저장됐는지 티가 안 난다 → 목록으로
   redirect("/admin");
 }

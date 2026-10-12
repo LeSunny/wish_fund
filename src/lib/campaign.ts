@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import type { Campaign } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
-import type { CampaignInput } from "./validation";
+import type { CampaignInput, CampaignUpdateInput } from "./validation";
 import { slugSchema } from "./validation";
 
 /**
@@ -83,9 +83,20 @@ export async function isSlugTaken(slug: string) {
   return found !== null;
 }
 
-export function updateCampaign(id: string, input: Omit<CampaignInput, "slug">) {
-  // slug는 공유된 링크를 깨뜨릴 수 있어 생성 후에는 바꾸지 않는다 (폼에서도 수정 불가로 막음)
-  return prisma.campaign.update({ where: { id }, data: input });
+/**
+ * slug는 공유된 링크를 깨뜨릴 수 있어 생성 후에는 바꾸지 않는다 (입력 타입에서 빠져 있음).
+ * CLOSED는 터미널 상태라 status는 CLOSED가 아닐 때만 바꾼다 — 폼을 열어둔 사이 lazy 마감된 캠페인이
+ * 폼에 남은 "OPEN"으로 되살아나지 않게 조건을 DB 쿼리에 건다.
+ */
+export async function updateCampaign(id: string, input: CampaignUpdateInput) {
+  const { status, ...rest } = input;
+  const [updated] = await prisma.$transaction([
+    prisma.campaign.update({ where: { id }, data: rest }),
+    ...(status
+      ? [prisma.campaign.updateMany({ where: { id, status: { not: "CLOSED" } }, data: { status } })]
+      : []),
+  ]);
+  return updated;
 }
 
 /** 마감일과 무관하게 지금 바로 마감. OPEN 상태일 때만 의미가 있다. */

@@ -86,4 +86,11 @@ export const campaignInputSchema = z.object({
 
 export type CampaignInput = z.infer<typeof campaignInputSchema>;
 
+// 수정: slug는 생성 후 불변이라 받지 않는다. 마감(CLOSED)된 캠페인은 폼에 상태 칸이 없으므로 status는 선택.
+export const campaignUpdateSchema = campaignInputSchema
+  .omit({ slug: true })
+  .extend({ status: campaignInputSchema.shape.status.optional() });
+
+export type CampaignUpdateInput = z.infer<typeof campaignUpdateSchema>;
+
 export const adminPasswordSchema = z.string().min(1, "비밀번호를 입력해주세요").max(200);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountSchema, campaignInputSchema, pledgeInputSchema } from "./validation";
+import { amountSchema, campaignInputSchema, campaignUpdateSchema, pledgeInputSchema } from "./validation";
 
 describe("amountSchema", () => {
   it.each([1_000, 10_000, 57_000, 1_000_000])("허용: %i", (amount) => {
@@ -96,5 +96,31 @@ describe("campaignInputSchema", () => {
 
   it("CLOSED는 폼 입력으로 받지 않는다 (터미널 상태)", () => {
     expect(campaignInputSchema.safeParse({ ...base, status: "CLOSED" }).success).toBe(false);
+    expect(campaignInputSchema.safeParse({ ...base, status: undefined }).success).toBe(false);
+  });
+});
+
+describe("campaignUpdateSchema", () => {
+  const base = {
+    title: "생일선물",
+    description: "설명",
+    productUrl: "",
+    thumbnailUrl: "",
+    goalAmount: 100_000,
+    deadline: "2026-12-31T23:59",
+    accountInfo: "",
+    kakaopayUrl: "",
+    tossUrl: "",
+    thanksMessage: "",
+  };
+
+  it("마감된 캠페인 폼처럼 status가 없어도 통과한다", () => {
+    const parsed = campaignUpdateSchema.parse(base);
+    expect(parsed.status).toBeUndefined();
+  });
+
+  it("status를 보내면 DRAFT/OPEN만 허용, slug는 걷어낸다", () => {
+    expect(campaignUpdateSchema.safeParse({ ...base, status: "CLOSED" }).success).toBe(false);
+    expect(campaignUpdateSchema.parse({ ...base, status: "OPEN", slug: "x" })).not.toHaveProperty("slug");
   });
 });

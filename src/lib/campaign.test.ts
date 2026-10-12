@@ -6,6 +6,7 @@ import {
   getCampaignTotals,
   getDefaultCampaignSlug,
   isSlugTaken,
+  updateCampaign,
 } from "./campaign";
 
 beforeEach(resetDb);
@@ -93,5 +94,41 @@ describe("isSlugTaken", () => {
     const draft = await makeCampaign({ status: "DRAFT" });
     expect(await isSlugTaken(draft.slug)).toBe(true);
     expect(await isSlugTaken("no-such-slug")).toBe(false);
+  });
+});
+
+describe("updateCampaign", () => {
+  const input = {
+    title: "바뀐 제목",
+    description: "설명",
+    productUrl: null,
+    thumbnailUrl: null,
+    goalAmount: 200_000,
+    deadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    accountInfo: null,
+    kakaopayUrl: null,
+    tossUrl: null,
+    thanksMessage: "고마워요",
+  };
+
+  it("마감된 캠페인도 status 없이 나머지 내용은 수정된다", async () => {
+    const closed = await makeCampaign({ status: "CLOSED" });
+    await updateCampaign(closed.id, input);
+    const after = await prisma.campaign.findUniqueOrThrow({ where: { id: closed.id } });
+    expect(after.title).toBe("바뀐 제목");
+    expect(after.thanksMessage).toBe("고마워요");
+    expect(after.status).toBe("CLOSED");
+  });
+
+  it("마감된 캠페인은 status를 보내도 다시 열리지 않는다", async () => {
+    const closed = await makeCampaign({ status: "CLOSED" });
+    await updateCampaign(closed.id, { ...input, status: "OPEN" });
+    expect(await statusOf(closed.id)).toBe("CLOSED");
+  });
+
+  it("마감 전이면 DRAFT↔OPEN 전환된다", async () => {
+    const open = await makeCampaign();
+    await updateCampaign(open.id, { ...input, status: "DRAFT" });
+    expect(await statusOf(open.id)).toBe("DRAFT");
   });
 });
