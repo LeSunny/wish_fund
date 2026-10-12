@@ -294,6 +294,10 @@ export function PledgeFlow({ slug, transfer }: { slug: string; transfer: Transfe
               <p className="font-pixel text-base text-red">📸 지금 꼭 캡처해두세요!</p>
               <p className="text-sm leading-relaxed">
                 이 코드로만 내 후원을 확인·수정·취소할 수 있어요.
+                <br />
+                <span className="text-ink/60">
+                  나중엔 펀딩 페이지 아래 &lsquo;내 후원 수정·취소하기&rsquo;에서 코드를 넣으면 돼요.
+                </span>
               </p>
               <div className="grid w-full grid-cols-2 gap-3">
                 <CopyButton text={code} variant="white" block>

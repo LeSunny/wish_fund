@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -98,6 +99,13 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
           ♡ 선물에 보태기 ♡
         </ButtonLink>
       </div>
+
+      <Link
+        href={`/my?from=${slug}`}
+        className="-mt-4 self-center text-sm underline underline-offset-4"
+      >
+        이미 보탰나요? 내 후원 수정·취소하기 →
+      </Link>
 
       <section className="flex flex-col gap-3">
         <h2 className="font-pixel text-lg">

@@ -82,6 +82,7 @@
 | `/c/[slug]` | 캠페인 메인: 진행률, 상품, 후원자 목록, 후원하기 CTA. DRAFT는 404, **CLOSED는 `/success`로 redirect** |
 | `/c/[slug]/pledge` | 후원 플로우 (입력 → 송금 안내 → 코드 발급 완료 화면) |
 | `/c/[slug]/success` | 마감 후 성공 페이지. **CLOSED가 아니면 메인으로 redirect** (서로 반대 방향으로 맞물림) |
+| `/my` | 내 후원 찾기: 코드 입력 → `/my/[code]` (GET 폼 `?code=`, 서버에서 형식만 보고 redirect). 캠페인 메인 CTA 아래 링크(`?from=slug`)로 진입 |
 | `/my/[code]` | 내 후원 조회/수정/취소 (코드만으로 접근) |
 | `/admin` | 관리자 로그인 화면 (세션 있으면 캠페인 목록) |
 | `/admin/campaigns/new` | 캠페인 생성 |
