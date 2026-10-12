@@ -43,7 +43,7 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
     <main className="mx-auto flex max-w-lg flex-col gap-8 px-4 py-10">
       <header className="relative flex flex-col gap-4">
         <Sparkle className="absolute -top-2 right-0 size-10 motion-safe:animate-twinkle" />
-        <GlobeIcon className="absolute top-14 -right-8 -z-10 size-28 text-apricot/70" />
+        <GlobeIcon className="absolute top-14 -right-4 -z-10 size-28 text-apricot/70 sm:-right-8" />
         <p className="font-pixel text-sm text-ink/60">wishfund.kr/c/{slug}</p>
         <h1 className="font-pixel text-4xl leading-tight">{campaign.title}</h1>
       </header>

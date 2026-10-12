@@ -129,6 +129,10 @@
 @layer base {
   html {
     color-scheme: light;
+    /* 가장자리에 걸친 장식(지구본 등)이 모바일에서 가로 스크롤을 만들지 않게 화면 끝에서 자른다.
+       clip 미지원 브라우저(iOS 15 이하)는 hidden으로 폴백 */
+    overflow-x: hidden;
+    overflow-x: clip;
   }
   body {
     @apply font-sans text-ink antialiased;
