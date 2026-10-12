@@ -1,6 +1,8 @@
 "use client";
 
 import { useId, useState, useTransition } from "react";
+import { CopyButton } from "@/components/CopyButton";
+import { TransferMethods, type TransferInfo } from "@/components/TransferMethods";
 import { ButtonLink, Button, buttonStyles } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox, Field, inputStyles } from "@/components/ui/Field";
@@ -41,12 +43,14 @@ export function MyPledgeView({
   campaignSlug,
   campaignClosed,
   editable,
+  transfer,
   pledge: initialPledge,
 }: {
   code: string;
   campaignSlug: string;
   campaignClosed: boolean;
   editable: boolean;
+  transfer: TransferInfo;
   pledge: PledgeView;
 }) {
   const [pledge, setPledge] = useState(initialPledge);
@@ -54,20 +58,29 @@ export function MyPledgeView({
   const [notice, setNotice] = useState<string | null>(null);
   const [cancelArmed, setCancelArmed] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  // 금액을 올려 저장한 직후에만: 더 보내야 할 차액 (송금 안내를 띄운다)
+  const [topUp, setTopUp] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function startEdit() {
     setServerError(null);
     setNotice(null);
+    setTopUp(null);
     setMode("edit");
   }
 
   function handleSaved(next: PledgeInput, revertedToPending: boolean) {
+    // 후원은 "송금했어요"를 누른 뒤에 생기므로, 금액이 바뀌면 이미 보낸 돈과의 차액이 생긴다
+    const diff = next.amount - pledge.amount;
+    const reconfirm = revertedToPending ? " 주인공이 확인하면 다시 '입금 확인 완료'가 돼요." : "";
     setPledge({ ...next, status: revertedToPending ? "PENDING" : pledge.status });
+    setTopUp(diff > 0 ? diff : null);
     setNotice(
-      revertedToPending
-        ? "금액이 바뀌어서 입금 대기 상태로 되돌아갔어요. 재입금 확인이 필요해요."
-        : "수정했어요.",
+      diff > 0
+        ? `금액을 올렸어요. 아래에서 차액 ${formatWon(diff)}만 더 보내주세요.${reconfirm}`
+        : diff < 0
+          ? `금액을 줄였어요. 이미 보낸 돈 중 ${formatWon(-diff)}은 주인공이 직접 돌려드려요. 환불받을 계좌를 주인공에게 알려주세요.${reconfirm}`
+          : "수정했어요.",
     );
     setMode("view");
   }
@@ -82,10 +95,11 @@ export function MyPledgeView({
       }
       setPledge((p) => ({ ...p, status: "CANCELLED" }));
       setCancelArmed(false);
+      setTopUp(null);
       setNotice(
         result.wasConfirmed
-          ? "취소됐어요. 이미 확인된 입금이라 환불은 주인공이 직접 계좌로 보내드려요."
-          : "취소됐어요.",
+          ? `취소됐어요. 보낸 ${formatWon(pledge.amount)}은 주인공이 직접 돌려드려요. 환불받을 계좌를 주인공에게 알려주세요.`
+          : "취소됐어요. 이미 송금했다면 주인공에게 알려주세요. 입금을 확인한 뒤 돌려드려요.",
       );
     });
   }
@@ -125,6 +139,22 @@ export function MyPledgeView({
       {notice && (
         <p className="border-2 border-ink bg-butter p-3 text-sm leading-relaxed">{notice}</p>
       )}
+      {topUp !== null && (
+        <Card title="send_more.txt">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-sm">차액만 보내주세요</p>
+                <p className="font-pixel text-4xl">{formatWon(topUp)}</p>
+              </div>
+              <CopyButton text={String(topUp)} variant="white" size="sm">
+                금액 복사
+              </CopyButton>
+            </div>
+            <TransferMethods transfer={transfer} />
+          </div>
+        </Card>
+      )}
       {serverError && (
         <p role="alert" className="border-2 border-red bg-white p-3 text-sm text-red">
           ✕ {serverError}
@@ -137,11 +167,7 @@ export function MyPledgeView({
         <p className="text-sm text-ink/60">마감된 펀딩이라 더 이상 수정·취소할 수 없어요.</p>
       ) : editable ? (
         <div className="flex flex-col gap-3">
-          {pledge.status === "CONFIRMED" && (
-            <p className="text-xs text-ink/60">
-              입금 확인된 후원이에요. 금액을 바꾸면 재입금 확인을 위해 입금 대기 상태로 되돌아가요.
-            </p>
-          )}
+          {pledge.status === "CONFIRMED" && <ConfirmedChangeGuide />}
           <div className="grid grid-cols-2 gap-3">
             <Button variant="white" onClick={startEdit} disabled={isPending}>
               수정하기
@@ -160,7 +186,7 @@ export function MyPledgeView({
             <div className="flex items-center justify-between gap-3 border-2 border-ink bg-white px-3 py-2">
               <span className="text-sm">
                 {pledge.status === "CONFIRMED"
-                  ? "이미 입금 확인된 후원이에요. 취소하면 환불은 주인공이 수동으로 보내드려요. 정말 취소할까요?"
+                  ? `이미 입금 확인된 후원이에요. 취소하면 보낸 ${formatWon(pledge.amount)}은 주인공이 직접 돌려드려요. 정말 취소할까요?`
                   : "정말 취소할까요? 되돌릴 수 없어요."}
               </span>
               <Button variant="white" size="sm" onClick={() => setCancelArmed(false)} disabled={isPending}>
@@ -175,6 +201,30 @@ export function MyPledgeView({
         펀딩 페이지로 돌아가기
       </ButtonLink>
     </div>
+  );
+}
+
+/** 입금 확인된 후원을 바꿀 때 돈이 어떻게 되는지. 환불은 자동이 아니라는 점을 미리 알린다. */
+function ConfirmedChangeGuide() {
+  return (
+    <Card tone="white">
+      <div className="flex flex-col gap-3 text-sm leading-relaxed">
+        <p className="font-pixel">입금 확인된 후원을 바꾸려면</p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
+          <dt className="font-pixel">이름·메시지</dt>
+          <dd>바로 바뀌어요. 입금 확인도 그대로예요.</dd>
+          <dt className="font-pixel">금액 올리기</dt>
+          <dd>차액만 더 보내면 돼요. 주인공이 확인할 때까지 &lsquo;입금 대기&rsquo;로 바뀌어요.</dd>
+          <dt className="font-pixel">금액 줄이기</dt>
+          <dd>차액은 주인공이 직접 돌려드려요. 역시 다시 확인할 때까지 &lsquo;입금 대기&rsquo;예요.</dd>
+          <dt className="font-pixel">취소</dt>
+          <dd>보낸 금액 전부를 주인공이 직접 돌려드려요.</dd>
+        </dl>
+        <p className="text-xs text-ink/60">
+          환불은 자동으로 되지 않아요. 돌려받아야 하면 받을 계좌를 주인공에게 꼭 알려주세요.
+        </p>
+      </div>
+    </Card>
   );
 }
 
@@ -201,6 +251,8 @@ function EditForm({
 
   const amountError =
     errors.amount ?? (amount !== null ? amountSchema.safeParse(amount).error?.issues[0]?.message : undefined);
+  // 유효한 금액일 때만 차액 안내
+  const amountDiff = amount !== null && !amountError ? amount - pledge.amount : 0;
 
   function handleAmountText(text: string) {
     const digits = text.replace(/\D/g, "").slice(0, MAX_AMOUNT_DIGITS);
@@ -322,9 +374,13 @@ function EditForm({
             />
           </div>
 
-          {pledge.status === "CONFIRMED" && (
-            <p className="text-xs text-ink/60">
-              금액을 바꾸면 재입금 확인을 위해 입금 대기 상태로 되돌아가요.
+          {amountDiff !== 0 && (
+            <p className="border-2 border-ink bg-butter p-3 text-sm leading-relaxed">
+              {amountDiff > 0
+                ? `+${formatWon(amountDiff)} · 저장하면 차액 송금 안내가 나와요.`
+                : `−${formatWon(-amountDiff)} · 차액은 주인공이 직접 돌려드려요.`}
+              {pledge.status === "CONFIRMED" &&
+                " 금액이 바뀌면 주인공이 다시 확인할 때까지 '입금 대기'로 바뀌어요."}
             </p>
           )}
         </div>

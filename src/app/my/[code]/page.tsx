@@ -67,6 +67,11 @@ export default async function MyPledgePage({ params }: PageProps<"/my/[code]">) 
         campaignSlug={campaign.slug}
         campaignClosed={campaign.status !== "OPEN"}
         editable={editable}
+        transfer={{
+          accountInfo: campaign.accountInfo,
+          kakaopayUrl: campaign.kakaopayUrl,
+          tossUrl: campaign.tossUrl,
+        }}
         pledge={{
           displayName: pledge.displayName,
           message: pledge.message,

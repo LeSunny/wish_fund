@@ -2,12 +2,13 @@
 
 import { useEffect, useId, useState, useTransition } from "react";
 import { CopyButton } from "@/components/CopyButton";
+import { TransferMethods, type TransferInfo } from "@/components/TransferMethods";
 import { Button, ButtonLink, buttonStyles } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Sparkle } from "@/components/ui/Deco";
 import { Checkbox, Field, inputStyles } from "@/components/ui/Field";
 import { cn } from "@/lib/cn";
-import { extractAccountNumber, formatWon } from "@/lib/format";
+import { formatWon } from "@/lib/format";
 import {
   AMOUNT_MAX,
   AMOUNT_PRESETS,
@@ -21,12 +22,6 @@ import { createPledge } from "./actions";
 
 type Step = "form" | "transfer" | "done";
 type Errors = Partial<Record<keyof PledgeInput, string>>;
-
-export type TransferInfo = {
-  accountInfo: string | null;
-  kakaopayUrl: string | null;
-  tossUrl: string | null;
-};
 
 const STEPS: { key: Step; label: string }[] = [
   { key: "form", label: "금액·이름" },
@@ -242,46 +237,7 @@ export function PledgeFlow({ slug, transfer }: { slug: string; transfer: Transfe
                 </CopyButton>
               </div>
 
-              {transfer.kakaopayUrl || transfer.tossUrl || transfer.accountInfo ? (
-                <div className="flex flex-col gap-3">
-                  {transfer.kakaopayUrl && (
-                    <a
-                      href={transfer.kakaopayUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={buttonStyles({ variant: "butter", block: true })}
-                    >
-                      카카오페이로 보내기 ↗
-                    </a>
-                  )}
-                  {transfer.tossUrl && (
-                    <a
-                      href={transfer.tossUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={buttonStyles({ variant: "periwinkle", block: true })}
-                    >
-                      토스로 보내기 ↗
-                    </a>
-                  )}
-                  {transfer.accountInfo && (
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-2 border-ink bg-white p-3">
-                      <p className="text-sm break-all">{transfer.accountInfo}</p>
-                      <CopyButton
-                        text={extractAccountNumber(transfer.accountInfo)}
-                        variant="white"
-                        size="sm"
-                      >
-                        계좌번호 복사
-                      </CopyButton>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="border-2 border-ink bg-white p-3 text-sm">
-                  송금 방법이 아직 등록되지 않았어요. 주인공에게 직접 물어봐주세요!
-                </p>
-              )}
+              <TransferMethods transfer={transfer} />
             </div>
           </Card>
 
