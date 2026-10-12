@@ -4,23 +4,28 @@ import { useActionState, useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field, inputStyles, selectStyles, textareaStyles } from "@/components/ui/Field";
-import { toKstDatetimeLocal } from "@/lib/format";
+import { formatWon, toKstDatetimeLocal } from "@/lib/format";
 import { GOAL_AMOUNT_MAX } from "@/lib/validation";
 import {
   checkSlugAction,
-  fetchProductOgAction,
   saveCampaign,
   type SaveCampaignState,
   type SlugCheckResult,
 } from "../actions";
+import {
+  ProductsEditor,
+  emptyProduct,
+  toProductDraft,
+  toProductInput,
+  type ProductDraft,
+} from "./ProductsEditor";
 
 export type EditableCampaign = {
   id: string;
   slug: string;
   title: string;
   description: string;
-  productUrl: string | null;
-  thumbnailUrl: string | null;
+  products: { title: string; url: string | null; thumbnailUrl: string | null; price: number | null }[];
   goalAmount: number;
   deadline: Date;
   accountInfo: string | null;
@@ -40,19 +45,16 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
   const id = useId();
   const boundSave = saveCampaign.bind(null, campaign?.id ?? null);
   const [state, formAction, pending] = useActionState(boundSave, initialSaveState);
-  const [ogState, ogAction, ogPending] = useActionState(fetchProductOgAction, {});
 
   const [title, setTitle] = useState(campaign?.title ?? "");
-  const [thumbnailUrl, setThumbnailUrl] = useState(campaign?.thumbnailUrl ?? "");
-
-  // "자동 채우기" 버튼(fetchProductOgAction)의 결과를 편집 가능한 로컬 상태로 반영한다.
-  // ogState는 구독 가능한 외부 스토어가 아니라 액션이 끝날 때 한 번 도착하는 결과값이라
-  // useSyncExternalStore로 옮길 수 없고, 렌더 중 파생도 안 된다(그 뒤 사용자가 또 고칠 수 있어야 함).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (ogState.title) setTitle(ogState.title);
-    if (ogState.thumbnailUrl) setThumbnailUrl(ogState.thumbnailUrl);
-  }, [ogState]);
+  // 상품 목록은 행 추가·삭제·순서 변경이 있어 상태로 관리하고, 제출 때 hidden input에 JSON으로 담는다
+  const [products, setProducts] = useState<ProductDraft[]>(() =>
+    campaign ? campaign.products.map(toProductDraft) : [emptyProduct()],
+  );
+  const [goalAmount, setGoalAmount] = useState(campaign ? String(campaign.goalAmount) : "");
+  // 가격을 적은 상품의 합계를 천 원 단위로 올림 (목표 금액 입력이 1,000원 단위)
+  const priceSum = products.reduce((sum, p) => sum + (p.price === "" ? 0 : Number(p.price)), 0);
+  const suggestedGoal = Math.ceil(priceSum / 1000) * 1000;
 
   // 새 캠페인일 때만: 공유 주소를 입력하는 동안 형식·중복을 미리 검사 (입력이 멈추고 0.4초 뒤)
   const [slug, setSlug] = useState("");
@@ -148,65 +150,29 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
             />
           </Field>
 
-          <div className="flex flex-col gap-2 border-t-2 border-dashed border-ink/30 pt-5">
-            <Field
-              label="상품 URL"
-              htmlFor={`${id}-productUrl`}
-              hint="입력 후 자동 채우기를 누르면 제목·썸네일을 긁어와요"
-              error={fieldError("productUrl") ?? ogState.error}
-            >
-              <div className="flex gap-2">
-                <input
-                  id={`${id}-productUrl`}
-                  name="productUrl"
-                  type="url"
-                  defaultValue={campaign?.productUrl ?? ""}
-                  placeholder="https://..."
-                  aria-invalid={!!fieldError("productUrl")}
-                  className={inputStyles}
-                />
-                <Button
-                  type="submit"
-                  formAction={ogAction}
-                  formNoValidate
-                  variant="white"
-                  size="sm"
-                  disabled={ogPending}
-                  className="shrink-0"
-                >
-                  {ogPending ? "가져오는 중..." : "자동 채우기"}
-                </Button>
-              </div>
-            </Field>
-
-            <Field label="썸네일 URL" htmlFor={`${id}-thumbnailUrl`} error={fieldError("thumbnailUrl")}>
-              <div className="flex items-center gap-3">
-                <input
-                  id={`${id}-thumbnailUrl`}
-                  name="thumbnailUrl"
-                  type="url"
-                  value={thumbnailUrl}
-                  onChange={(e) => setThumbnailUrl(e.target.value)}
-                  placeholder="https://..."
-                  aria-invalid={!!fieldError("thumbnailUrl")}
-                  className={inputStyles}
-                />
-                {thumbnailUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element -- 미리보기, 도메인 목록을 미리 알 수 없음
-                  <img
-                    src={thumbnailUrl}
-                    alt=""
-                    className="size-12 shrink-0 border-2 border-ink object-cover"
-                    onError={(e) => (e.currentTarget.style.visibility = "hidden")}
-                    onLoad={(e) => (e.currentTarget.style.visibility = "visible")}
-                  />
-                )}
-              </div>
-            </Field>
+          <div className="border-t-2 border-dashed border-ink/30 pt-5">
+            <ProductsEditor products={products} onChange={setProducts} fieldError={fieldError} />
+            <input type="hidden" name="products" value={JSON.stringify(products.map(toProductInput))} />
           </div>
 
           <div className="grid gap-5 border-t-2 border-dashed border-ink/30 pt-5 sm:grid-cols-2">
-            <Field label="목표 금액(원)" htmlFor={`${id}-goalAmount`} error={fieldError("goalAmount")}>
+            <Field
+              label="목표 금액(원)"
+              htmlFor={`${id}-goalAmount`}
+              error={fieldError("goalAmount")}
+              hint={
+                suggestedGoal >= 1000 &&
+                String(suggestedGoal) !== goalAmount && (
+                  <button
+                    type="button"
+                    onClick={() => setGoalAmount(String(suggestedGoal))}
+                    className="underline underline-offset-2"
+                  >
+                    상품 합계로 채우기 ({formatWon(suggestedGoal)})
+                  </button>
+                )
+              }
+            >
               <input
                 id={`${id}-goalAmount`}
                 name="goalAmount"
@@ -216,7 +182,8 @@ export function CampaignForm({ campaign }: { campaign?: EditableCampaign }) {
                 min={1000}
                 max={GOAL_AMOUNT_MAX}
                 step={1000}
-                defaultValue={campaign?.goalAmount}
+                value={goalAmount}
+                onChange={(e) => setGoalAmount(e.target.value)}
                 aria-invalid={!!fieldError("goalAmount")}
                 className={inputStyles}
               />

@@ -2,14 +2,14 @@ import "server-only";
 import { cache } from "react";
 import type { Campaign } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
-import type { CampaignInput, CampaignUpdateInput } from "./validation";
+import type { CampaignInput, CampaignUpdateInput, ProductInput } from "./validation";
 import { slugSchema } from "./validation";
 
 /**
  * 마감일이 지난 OPEN 캠페인은 CLOSED로 바꾼다.
  * (Vercel에 상시 워커가 없어서 조회 시점에 lazy 하게 처리. 마감 처리는 이 함수를 통해서만.)
  */
-async function closeIfExpired(campaign: Campaign): Promise<Campaign> {
+async function closeIfExpired<T extends Campaign>(campaign: T): Promise<T> {
   if (campaign.status === "OPEN" && campaign.deadline <= new Date()) {
     // 동시 요청이 겹쳐도 한 번만 바뀌도록 updateMany + status 조건
     await prisma.campaign.updateMany({
@@ -21,16 +21,19 @@ async function closeIfExpired(campaign: Campaign): Promise<Campaign> {
   return campaign;
 }
 
+// 캠페인 조회 시 상품은 관리자 폼 순서대로 함께 가져온다
+const withProducts = { products: { orderBy: { sortOrder: "asc" } } } as const;
+
 /** slug로 캠페인을 가져온다 (공개 페이지용). */
 export const getCampaign = cache(async (slug: string) => {
   if (!slugSchema.safeParse(slug).success) return null;
-  const campaign = await prisma.campaign.findUnique({ where: { slug } });
+  const campaign = await prisma.campaign.findUnique({ where: { slug }, include: withProducts });
   return campaign && closeIfExpired(campaign);
 });
 
 /** id로 캠페인을 가져온다 (관리자용 — DRAFT도 조회 가능). */
 export const getCampaignById = cache(async (id: string) => {
-  const campaign = await prisma.campaign.findUnique({ where: { id } });
+  const campaign = await prisma.campaign.findUnique({ where: { id }, include: withProducts });
   return campaign && closeIfExpired(campaign);
 });
 
@@ -73,8 +76,14 @@ export function listCampaignsForAdmin() {
   return prisma.campaign.findMany({ orderBy: { createdAt: "desc" } });
 }
 
+/** 폼의 상품 배열 → DB 행. 배열 순서를 sortOrder로 저장한다. */
+function productRows(products: ProductInput[]) {
+  return products.map((product, sortOrder) => ({ ...product, sortOrder }));
+}
+
 export function createCampaign(input: CampaignInput) {
-  return prisma.campaign.create({ data: input });
+  const { products, ...rest } = input;
+  return prisma.campaign.create({ data: { ...rest, products: { create: productRows(products) } } });
 }
 
 /** 새 캠페인 폼에서 공유 주소 중복을 미리 알려주기 위한 조회. 최종 판정은 저장 시 DB unique 제약. */
@@ -89,9 +98,13 @@ export async function isSlugTaken(slug: string) {
  * 폼에 남은 "OPEN"으로 되살아나지 않게 조건을 DB 쿼리에 건다.
  */
 export async function updateCampaign(id: string, input: CampaignUpdateInput) {
-  const { status, ...rest } = input;
+  const { status, products, ...rest } = input;
   const [updated] = await prisma.$transaction([
-    prisma.campaign.update({ where: { id }, data: rest }),
+    // 상품은 폼에 보이는 목록이 전부라 통째로 교체 (다른 곳에서 상품 id를 참조하지 않음)
+    prisma.campaign.update({
+      where: { id },
+      data: { ...rest, products: { deleteMany: {}, create: productRows(products) } },
+    }),
     ...(status
       ? [prisma.campaign.updateMany({ where: { id, status: { not: "CLOSED" } }, data: { status } })]
       : []),

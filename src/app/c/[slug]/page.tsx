@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { GlobeIcon, Sparkle, Starburst } from "@/components/ui/Deco";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { getCampaign, getCampaignTotals } from "@/lib/campaign";
+import { formatWon } from "@/lib/format";
 import { campaignMetadata } from "@/lib/metadata";
 import { getPublicPledges } from "@/lib/pledge";
 
@@ -38,6 +39,8 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
     getPublicPledges(campaign.id),
   ]);
   const dday = daysLeft(campaign.deadline);
+  // 대표 이미지 = 사진이 있는 첫 번째 상품 (공유 썸네일과 같은 규칙, lib/metadata.ts)
+  const heroImage = campaign.products.find((p) => p.thumbnailUrl)?.thumbnailUrl;
 
   return (
     <main className="mx-auto flex max-w-lg flex-col gap-8 px-4 py-10">
@@ -48,10 +51,10 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
         <h1 className="font-pixel text-4xl leading-tight">{campaign.title}</h1>
       </header>
 
-      {campaign.thumbnailUrl && (
+      {heroImage && (
         // eslint-disable-next-line @next/next/no-img-element -- 외부 상품 이미지, 도메인 목록을 미리 알 수 없음
         <img
-          src={campaign.thumbnailUrl}
+          src={heroImage}
           alt=""
           className="aspect-video w-full border-2 border-ink object-cover"
         />
@@ -87,16 +90,7 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{campaign.description}</ReactMarkdown>
       </div>
 
-      {campaign.productUrl && (
-        <a
-          href={campaign.productUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="border-2 border-ink bg-white px-4 py-3 text-sm underline underline-offset-4"
-        >
-          🎁 어떤 선물인지 보러가기 ↗
-        </a>
-      )}
+      {campaign.products.length > 0 && <Wishlist products={campaign.products} />}
 
       <div className="relative">
         <Starburst spikes={8} className="absolute -top-6 -right-4 size-14 text-orange" />
@@ -124,5 +118,44 @@ export default async function CampaignPage({ params }: PageProps<"/c/[slug]">) {
         )}
       </section>
     </main>
+  );
+}
+
+function Wishlist({
+  products,
+}: {
+  products: { id: string; title: string; url: string | null; thumbnailUrl: string | null; price: number | null }[];
+}) {
+  return (
+    <Card title="wishlist.txt">
+      <ul className="flex flex-col divide-y-2 divide-dashed divide-ink/30">
+        {products.map((p) => (
+          <li key={p.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+            {p.thumbnailUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- 외부 상품 이미지, 도메인 목록을 미리 알 수 없음
+              <img src={p.thumbnailUrl} alt="" className="size-14 shrink-0 border-2 border-ink bg-white object-cover" />
+            ) : (
+              <span aria-hidden className="grid size-14 shrink-0 place-items-center border-2 border-ink bg-butter text-xl">
+                🎁
+              </span>
+            )}
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <p className="font-pixel text-sm break-words">{p.title}</p>
+              {p.price !== null && <p className="text-xs text-ink/60">{formatWon(p.price)}</p>}
+            </div>
+            {p.url && (
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 text-sm underline underline-offset-4"
+              >
+                보러가기 ↗
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

@@ -35,7 +35,6 @@
 | slug | String, unique | 공유용 URL |
 | title | String | |
 | description | String | 마크다운 허용 (렌더 시 raw HTML 비허용) |
-| productUrl, thumbnailUrl | String? | |
 | goalAmount | Int | 원 단위 |
 | deadline | DateTime | |
 | accountInfo | String? | 은행/계좌/예금주 |
@@ -44,6 +43,21 @@
 | thanksMessage | String? | 성공 페이지 문구 |
 | ownerId | String? | 향후 확장용, MVP 미사용 |
 | createdAt, updatedAt | DateTime | |
+
+### Product (캠페인 위시리스트, 최대 5개)
+| 필드 | 타입 | 비고 |
+|---|---|---|
+| id | String (cuid) | |
+| campaignId | String | FK → Campaign (cascade) |
+| title | String | 상품 이름 |
+| url, thumbnailUrl | String? | |
+| price | Int? | 원 단위, **참고용** — 목표 금액 자동 제안에만 쓰고 진행률과 무관 |
+| sortOrder | Int | 0부터, 관리자 폼 순서 |
+| createdAt, updatedAt | DateTime | |
+
+- 후원은 상품별이 아니라 **캠페인 전체**에 보탠다 (위시리스트형). 상품별 진행률·상품 선택 후원은 없음.
+- 대표 이미지(메인 상단·OG) = **사진이 있는 첫 번째 상품**의 `thumbnailUrl`.
+- 수정 저장 시 상품은 폼 목록으로 **통째로 교체**(deleteMany + create). 다른 곳에서 상품 id를 참조하지 않으므로 안전.
 
 ### Pledge
 | 필드 | 타입 | 비고 |
@@ -206,15 +220,15 @@
 5. [x] 공유: `generateMetadata`로 카카오톡 OG 태그 (캠페인 제목·썸네일·"OO님의 생일선물에 보태기"). 썸네일 없으면 기본 이미지
    - 공통 로직은 `lib/metadata.ts`의 `campaignMetadata()` — `/c/[slug]`(제목 "…에 보태기")와 `/c/[slug]/success`(제목 "…펀딩 완료!")에서 공용
    - `metadataBase`는 루트 layout에 설정 (`siteUrl()`: `NEXT_PUBLIC_SITE_URL` → Vercel 배포 도메인 → localhost)
-   - 이미지: `thumbnailUrl`이 있으면 그대로 사용(실제 비율을 모르니 width/height 힌트는 안 줌), 없으면 `public/og-default.png`(1200×630, `scripts/generate-og-default.tsx`로 생성 — `next/og`의 `ImageResponse` + 갈무리 폰트. 다시 만들려면 `npx tsx scripts/generate-og-default.tsx`)
+   - 이미지: 사진이 있는 첫 번째 상품의 `thumbnailUrl`(9단계 이후)을 그대로 사용(실제 비율을 모르니 width/height 힌트는 안 줌), 없으면 `public/og-default.png`(1200×630, `scripts/generate-og-default.tsx`로 생성 — `next/og`의 `ImageResponse` + 갈무리 폰트. 다시 만들려면 `npx tsx scripts/generate-og-default.tsx`)
    - description은 마크다운 기호를 걷어낸 평문 80자 요약
 6. [x] 관리자 `/admin`
    - 캠페인 생성/수정(목표금액·마감일·상품 URL·계좌정보), 수동 마감 버튼(2단계 확인, OPEN일 때만 노출)
    - 후원 목록 테이블(금액·이름·코드 항상 노출), PENDING→CONFIRMED 확인 버튼
-   - 상품 URL 입력 시 OG 태그 스크래핑으로 제목·썸네일 자동 채움 (실패 시 직접 입력) — `lib/og-scrape.ts`, 정규식 기반(HTML 파서 미사용)
+   - 상품 URL 입력 시 OG 태그 스크래핑으로 제목·썸네일 자동 채움 (9단계부터 상품 행마다 `fetchProductOg` 직접 호출) (실패 시 직접 입력) — `lib/og-scrape.ts`, 정규식 기반(HTML 파서 미사용)
    - slug는 생성 후 수정 불가(폼에서 hidden으로 유지) — 공유된 링크가 깨지지 않게
    - CLOSED는 폼에서 되돌릴 수 없음(터미널 상태). DRAFT↔OPEN만 select로 토글
-   - 두 useActionState(`saveCampaign`/`fetchProductOgAction`)를 버튼별 `formAction`으로 한 폼에 공존시킴
+   - 저장은 `useActionState(saveCampaign)`. (9단계 전엔 OG 자동 채우기도 버튼별 `formAction`으로 같은 폼에 공존했으나, 상품이 여러 개가 되며 행별 직접 호출로 바뀜)
 7. [x] 루트 리다이렉트 `/` + 내 후원 `/my/[code]`
    - `/`: `getDefaultCampaignSlug()`(`lib/campaign.ts`) — `DEFAULT_CAMPAIGN_SLUG` → 없으면 최근 OPEN 캠페인을 `getCampaign()`으로 하나씩 열어 lazy 마감 체크를 거친 뒤 여전히 OPEN인 첫 번째. 하나도 없으면 안내 화면
    - `/`는 `export const dynamic = "force-dynamic"` — 안 붙이면 빌드 때 정적 프리렌더돼서 새 캠페인·마감이 재배포 전까지 반영되지 않음
@@ -227,3 +241,8 @@
    - `prisma.config.ts`는 `DATABASE_URL_UNPOOLED` 우선(Neon 직접 연결), 런타임은 pooled `DATABASE_URL`
    - `vercel-build` 스크립트로 배포 시 `migrate deploy`. 절차는 "배포" 섹션
    - 검증: 프로덕션 빌드(`next start`) + 로컬 Postgres로 후원→입금 확인→수정→취소→마감→성공 페이지 전체 흐름(헤드리스 Chrome) 통과
+9. [x] 캠페인당 여러 상품 (위시리스트형)
+   - `Product` 테이블 신설, `Campaign.productUrl/thumbnailUrl` 제거. 마이그레이션 `campaign_products`가 기존 상품 정보를 첫 번째 상품(이름 = 캠페인 제목)으로 옮긴 뒤 컬럼을 지움
+   - 관리자 폼: `ProductsEditor`(추가·삭제·↑↓ 순서·행별 자동 채우기·가격). 상품 목록은 hidden input `products`에 JSON으로 담아 제출, 서버에서 `productInputSchema`로 검증. 필드 에러 키는 `products.0.title`처럼 경로 전체
+   - 가격을 적으면 "상품 합계로 채우기"로 목표 금액 제안 (천 원 단위 올림)
+   - 공개 메인: 대표 이미지 + `wishlist.txt` 카드(사진·이름·가격·보러가기)

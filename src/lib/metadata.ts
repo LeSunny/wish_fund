@@ -32,13 +32,13 @@ const DESCRIPTION_MAX = 80;
 type CampaignForMetadata = {
   title: string;
   description: string;
-  thumbnailUrl: string | null;
+  products: { thumbnailUrl: string | null }[]; // 표시 순서대로
 };
 
 /**
  * 캠페인 공개 페이지(메인/성공)의 OG 메타데이터. 카카오톡 등에서 링크 공유 시 쓰인다.
  * - title: "{campaign.title}{titleSuffix}"
- * - image: thumbnailUrl이 있으면 그대로(크기 미지정 — 실제 비율을 모르니 잘못된 힌트를 주지 않는다),
+ * - image: 썸네일이 있는 첫 번째 상품의 이미지(크기 미지정 — 실제 비율을 모르니 잘못된 힌트를 주지 않는다),
  *   없으면 번들된 기본 이미지(public/og-default.png, 1200x630)
  */
 export function campaignMetadata(
@@ -53,8 +53,9 @@ export function campaignMetadata(
       : plain
     : `${campaign.title} — 마음을 한 조각씩 보태주세요`;
 
-  const images: NonNullable<Metadata["openGraph"]>["images"] = campaign.thumbnailUrl
-    ? [{ url: campaign.thumbnailUrl }]
+  const thumbnailUrl = campaign.products.find((p) => p.thumbnailUrl)?.thumbnailUrl;
+  const images: NonNullable<Metadata["openGraph"]>["images"] = thumbnailUrl
+    ? [{ url: thumbnailUrl }]
     : [{ url: "/og-default.png", width: 1200, height: 630 }];
 
   return {

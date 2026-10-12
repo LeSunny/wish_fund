@@ -55,8 +55,7 @@ describe("campaignInputSchema", () => {
     slug: "dasom",
     title: "생일선물",
     description: "설명",
-    productUrl: "",
-    thumbnailUrl: "",
+    products: [],
     goalAmount: 100_000,
     deadline: "2026-12-31T23:59",
     accountInfo: "",
@@ -68,8 +67,8 @@ describe("campaignInputSchema", () => {
 
   it("빈 선택 입력은 null, 마감일은 Date로 바꾼다", () => {
     const parsed = campaignInputSchema.parse(base);
-    expect(parsed.productUrl).toBeNull();
     expect(parsed.accountInfo).toBeNull();
+    expect(parsed.kakaopayUrl).toBeNull();
     expect(parsed.deadline).toBeInstanceOf(Date);
   });
 
@@ -91,7 +90,29 @@ describe("campaignInputSchema", () => {
   });
 
   it("URL 형식이 아니면 거부한다", () => {
-    expect(campaignInputSchema.safeParse({ ...base, productUrl: "not a url" }).success).toBe(false);
+    expect(campaignInputSchema.safeParse({ ...base, tossUrl: "not a url" }).success).toBe(false);
+  });
+
+  const product = { title: "에어팟", url: "", thumbnailUrl: "", price: null };
+
+  it("상품: 빈 URL은 null, 가격은 비워도 된다", () => {
+    const parsed = campaignInputSchema.parse({ ...base, products: [product, { ...product, price: 30_000 }] });
+    expect(parsed.products[0]).toEqual({ title: "에어팟", url: null, thumbnailUrl: null, price: null });
+    expect(parsed.products[1].price).toBe(30_000);
+  });
+
+  it("상품: 이름 필수, URL 형식, 가격은 0 이상 정수", () => {
+    const fails = (p: object) => !campaignInputSchema.safeParse({ ...base, products: [{ ...product, ...p }] }).success;
+    expect(fails({ title: " " })).toBe(true);
+    expect(fails({ url: "not a url" })).toBe(true);
+    expect(fails({ price: -1 })).toBe(true);
+    expect(fails({ price: 1.5 })).toBe(true);
+  });
+
+  it("상품: 최대 5개, 배열이 아니면 거부", () => {
+    expect(campaignInputSchema.safeParse({ ...base, products: Array(5).fill(product) }).success).toBe(true);
+    expect(campaignInputSchema.safeParse({ ...base, products: Array(6).fill(product) }).success).toBe(false);
+    expect(campaignInputSchema.safeParse({ ...base, products: null }).success).toBe(false);
   });
 
   it("CLOSED는 폼 입력으로 받지 않는다 (터미널 상태)", () => {
@@ -104,8 +125,7 @@ describe("campaignUpdateSchema", () => {
   const base = {
     title: "생일선물",
     description: "설명",
-    productUrl: "",
-    thumbnailUrl: "",
+    products: [],
     goalAmount: 100_000,
     deadline: "2026-12-31T23:59",
     accountInfo: "",

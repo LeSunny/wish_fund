@@ -31,9 +31,6 @@ model Campaign {
   title       String
   description String // 마크다운 허용 (렌더 시 raw HTML은 비허용)
 
-  productUrl   String?
-  thumbnailUrl String?
-
   goalAmount Int // 원 단위
   deadline   DateTime
 
@@ -51,10 +48,32 @@ model Campaign {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  pledges Pledge[]
+  products Product[]
+  pledges  Pledge[]
 
   @@index([status])
   @@map("campaigns")
+}
+
+// 캠페인의 위시리스트 상품 (최대 5개, lib/validation.ts). 후원은 상품별이 아니라 캠페인 전체에 보탠다.
+model Product {
+  id String @id @default(cuid())
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  title        String
+  url          String?
+  thumbnailUrl String? // 첫 번째 상품의 썸네일이 공유(OG) 이미지
+  price        Int? // 원 단위. 참고용 — 목표 금액 자동 제안에만 쓰고 진행률과는 무관
+
+  sortOrder Int // 0부터. 관리자 폼의 순서 그대로
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campaignId, sortOrder])
+  @@map("products")
 }
 
 model Pledge {

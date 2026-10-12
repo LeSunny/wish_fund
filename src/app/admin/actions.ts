@@ -47,14 +47,22 @@ export async function logoutAdmin() {
 
 export type SaveCampaignState = { error?: string; fieldErrors?: Record<string, string> };
 
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function campaignInputFromFormData(formData: FormData) {
   const str = (key: string) => String(formData.get(key) ?? "");
   return {
     slug: str("slug"),
     title: str("title"),
     description: str("description"),
-    productUrl: str("productUrl"),
-    thumbnailUrl: str("thumbnailUrl"),
+    // 상품 목록은 폼이 hidden input에 JSON으로 담아 보낸다. 깨진 JSON은 null → zod가 거부
+    products: parseJson(str("products")),
     goalAmount: Number(str("goalAmount")),
     deadline: str("deadline"),
     accountInfo: str("accountInfo"),
@@ -69,7 +77,8 @@ function campaignInputFromFormData(formData: FormData) {
 function invalidInput(error: z.ZodError): SaveCampaignState {
   const fieldErrors: Record<string, string> = {};
   for (const issue of error.issues) {
-    fieldErrors[String(issue.path[0])] ??= issue.message;
+    // 상품 필드는 "products.0.title"처럼 경로 전체를 키로 (폼이 상품 행별로 찾아 표시)
+    fieldErrors[issue.path.join(".")] ??= issue.message;
   }
   return { error: "입력값을 확인해주세요", fieldErrors };
 }
@@ -149,15 +158,13 @@ export async function confirmPledgeAction(slug: string, pledgeId: string) {
 
 // ---- 상품 URL → OG 자동 채우기 ----
 
-export type OgFetchState = { title?: string; thumbnailUrl?: string; error?: string };
+export type OgFetchResult = { title?: string; thumbnailUrl?: string; error?: string };
 
-export async function fetchProductOgAction(
-  _prev: OgFetchState,
-  formData: FormData,
-): Promise<OgFetchState> {
+/** 상품 URL → OG 제목·썸네일. 관리자 폼의 상품 행마다 "자동 채우기"로 직접 호출한다. */
+export async function fetchProductOg(rawUrl: string): Promise<OgFetchResult> {
   await requireAdminSession();
 
-  const url = String(formData.get("productUrl") ?? "").trim();
+  const url = rawUrl.trim();
   if (!url) return { error: "상품 URL을 먼저 입력해주세요" };
 
   try {

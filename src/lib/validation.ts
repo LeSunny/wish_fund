@@ -57,12 +57,31 @@ const optionalUrl = z
   .refine((v) => v === "" || z.url().safeParse(v).success, "올바른 URL 형식이 아니에요")
   .transform((v) => v || null);
 
+export const PRODUCTS_MAX = 5;
+
+export const productInputSchema = z.object({
+  title: z.string().trim().min(1, "상품 이름을 입력해주세요").max(60, "상품 이름은 60자까지예요"),
+  url: optionalUrl,
+  thumbnailUrl: optionalUrl,
+  // 참고용 가격 (목표 금액 자동 제안에만 사용). 비우면 null
+  price: z
+    .number()
+    .int("원 단위 정수로 입력해주세요")
+    .min(0, "0원 이상으로 입력해주세요")
+    .max(GOAL_AMOUNT_MAX, `최대 ${GOAL_AMOUNT_MAX.toLocaleString("ko-KR")}원까지예요`)
+    .nullable(),
+});
+
+export type ProductInput = z.infer<typeof productInputSchema>;
+
 export const campaignInputSchema = z.object({
   slug: slugSchema,
   title: z.string().trim().min(1, "제목을 입력해주세요").max(60, "제목은 60자까지예요"),
   description: z.string().trim().min(1, "설명을 입력해주세요").max(4000, "설명은 4000자까지예요"),
-  productUrl: optionalUrl,
-  thumbnailUrl: optionalUrl,
+  // 순서 = 화면 표시 순서. 첫 번째 상품의 썸네일이 공유(OG) 이미지
+  products: z
+    .array(productInputSchema, { error: "상품 정보를 확인해주세요" })
+    .max(PRODUCTS_MAX, `상품은 최대 ${PRODUCTS_MAX}개까지예요`),
   goalAmount: z
     .number({ error: "목표 금액을 입력해주세요" })
     .int()

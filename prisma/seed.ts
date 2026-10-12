@@ -18,7 +18,12 @@ async function main() {
       slug: "dasom",
       title: "다솜이 생일선물",
       description: "올해 생일엔 **에어팟 프로 3**가 갖고 싶어요 🎧\n\n마음만 보태줘도 충분해요!",
-      productUrl: "https://www.apple.com/kr/airpods-pro/",
+      products: {
+        create: [
+          { title: "에어팟 프로 3", url: "https://www.apple.com/kr/airpods-pro/", price: 329_000, sortOrder: 0 },
+          { title: "실리콘 케이스", price: 30_000, sortOrder: 1 },
+        ],
+      },
       goalAmount: 359_000,
       deadline: new Date(Date.now() + 7 * DAY),
       accountInfo: "카카오뱅크 3333-00-0000000 이다솜 (예시)",

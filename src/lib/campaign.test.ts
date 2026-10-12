@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCampaign, makePledge, prisma, resetDb } from "@/test/db";
 import {
   closeCampaignNow,
+  createCampaign,
   getCampaign,
+  getCampaignById,
   getCampaignTotals,
   getDefaultCampaignSlug,
   isSlugTaken,
@@ -89,6 +91,29 @@ describe("getDefaultCampaignSlug", () => {
   });
 });
 
+describe("createCampaign", () => {
+  it("상품을 입력 순서대로 함께 만든다", async () => {
+    const created = await createCampaign({
+      slug: "with-products",
+      title: "선물",
+      description: "설명",
+      products: [
+        { title: "첫째", url: null, thumbnailUrl: "https://example.com/a.png", price: 1_000 },
+        { title: "둘째", url: null, thumbnailUrl: null, price: null },
+      ],
+      goalAmount: 10_000,
+      deadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      accountInfo: null,
+      kakaopayUrl: null,
+      tossUrl: null,
+      thanksMessage: null,
+      status: "OPEN",
+    });
+    const fetched = await getCampaignById(created.id);
+    expect(fetched?.products.map((p) => p.title)).toEqual(["첫째", "둘째"]);
+  });
+});
+
 describe("isSlugTaken", () => {
   it("이미 있는 slug면 true, 없으면 false (상태와 무관)", async () => {
     const draft = await makeCampaign({ status: "DRAFT" });
@@ -101,8 +126,7 @@ describe("updateCampaign", () => {
   const input = {
     title: "바뀐 제목",
     description: "설명",
-    productUrl: null,
-    thumbnailUrl: null,
+    products: [],
     goalAmount: 200_000,
     deadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
     accountInfo: null,
@@ -124,6 +148,22 @@ describe("updateCampaign", () => {
     const closed = await makeCampaign({ status: "CLOSED" });
     await updateCampaign(closed.id, { ...input, status: "OPEN" });
     expect(await statusOf(closed.id)).toBe("CLOSED");
+  });
+
+  it("상품은 폼 목록으로 통째로 교체되고 순서가 유지된다", async () => {
+    const campaign = await makeCampaign({
+      products: { create: [{ title: "옛 상품", sortOrder: 0 }] },
+    });
+    const products = [
+      { title: "B", url: null, thumbnailUrl: null, price: 10_000 },
+      { title: "A", url: "https://example.com", thumbnailUrl: null, price: null },
+    ];
+    await updateCampaign(campaign.id, { ...input, products });
+    const after = await getCampaign(campaign.slug);
+    expect(after?.products.map((p) => [p.title, p.sortOrder])).toEqual([
+      ["B", 0],
+      ["A", 1],
+    ]);
   });
 
   it("마감 전이면 DRAFT↔OPEN 전환된다", async () => {
